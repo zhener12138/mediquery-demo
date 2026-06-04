@@ -1,0 +1,80 @@
+<template>
+  <div class="page-container">
+    <div class="chat-container">
+      <div class="chat-header">
+        <el-icon :size="24"><FirstAidKit /></el-icon>
+        <h2>智能医生</h2>
+        <span class="subtitle">AI-powered by Tongyi Qianwen</span>
+      </div>
+      <div class="chat-messages" ref="msgContainer">
+        <div v-for="(msg, idx) in messages" :key="idx" :class="['message', msg.role]">
+          <div class="msg-avatar">
+            <el-avatar v-if="msg.role === 'user'" :size="36">{{ auth.userInfo?.realName?.charAt(0) || '我' }}</el-avatar>
+            <el-icon v-else :size="36" color="#409eff"><FirstAidKit /></el-icon>
+          </div>
+          <div class="msg-content">{{ msg.content }}</div>
+        </div>
+        <div v-if="typing" class="message assistant">
+          <div class="msg-avatar"><el-icon :size="36" color="#409eff"><FirstAidKit /></el-icon></div>
+          <div class="msg-content typing"><span></span><span></span><span></span></div>
+        </div>
+      </div>
+      <div class="chat-input">
+        <el-input v-model="input" placeholder="输入您的健康疑问..." @keyup.enter="send" :disabled="typing" size="large" maxlength="500" show-word-limit>
+          <template #append><el-button type="primary" @click="send" :disabled="typing || !input.trim()" :loading="typing">发送</el-button></template>
+        </el-input>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, nextTick, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import api from '@/api'
+
+const auth = useAuthStore()
+const input = ref('')
+const typing = ref(false)
+const messages = ref<{ role: string; content: string }[]>([])
+const msgContainer = ref<HTMLElement>()
+
+function scrollBottom() {
+  nextTick(() => {
+    if (msgContainer.value) msgContainer.value.scrollTop = msgContainer.value.scrollHeight
+  })
+}
+
+async function send() {
+  if (!input.value.trim() || typing.value) return
+  const userMsg = input.value.trim()
+  messages.value.push({ role: 'user', content: userMsg })
+  input.value = ''
+  scrollBottom()
+  typing.value = true
+  try {
+    const res = await api.post('/ai-doctor/chat', { content: userMsg })
+    messages.value.push({ role: 'assistant', content: res.data.reply })
+  } catch (e) {} finally { typing.value = false; scrollBottom() }
+}
+
+onMounted(() => { messages.value.push({ role: 'assistant', content: '您好！我是医问通智能医生，请问有什么可以帮您的？' }) })
+</script>
+
+<style scoped>
+.chat-container { max-width: 800px; margin: 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.06); display: flex; flex-direction: column; height: calc(100vh - 180px); }
+.chat-header { display: flex; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #ebeef5; }
+.chat-header h2 { font-size: 18px; }
+.subtitle { font-size: 12px; color: var(--text-secondary); }
+.chat-messages { flex: 1; overflow-y: auto; padding: 24px; }
+.message { display: flex; gap: 12px; margin-bottom: 20px; }
+.message.user { flex-direction: row-reverse; }
+.message.user .msg-content { background: var(--primary); color: #fff; }
+.message.assistant .msg-content { background: #f4f4f5; }
+.msg-content { padding: 12px 16px; border-radius: 12px; max-width: 70%; line-height: 1.6; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+.chat-input { padding: 16px 24px; border-top: 1px solid #ebeef5; }
+.typing span { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #909399; margin: 0 2px; animation: typing 1.4s infinite both; }
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+</style>

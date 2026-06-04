@@ -1,0 +1,89 @@
+package com.mediquery.module.user.controller;
+
+import com.mediquery.common.dto.Result;
+import com.mediquery.integration.oss.OssClient;
+import com.mediquery.module.user.entity.User;
+import com.mediquery.module.user.mapper.UserMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Map;
+
+@Tag(name = "用户管理")
+@RestController
+@RequestMapping("/api/v1")
+public class UserController {
+
+    private final UserMapper userMapper;
+    private final PasswordEncoder passwordEncoder;
+    private final OssClient ossClient;
+
+    public UserController(UserMapper userMapper, PasswordEncoder passwordEncoder, OssClient ossClient) {
+        this.userMapper = userMapper;
+        this.passwordEncoder = passwordEncoder;
+        this.ossClient = ossClient;
+    }
+
+    @Operation(summary = "获取当前用户信息")
+    @GetMapping("/user/me")
+    public Result<User> me(@RequestAttribute(required = false) Integer userId) {
+        if (userId == null) return Result.unauthorized("请先登录");
+        var user = userMapper.selectById(userId);
+        if (user != null) user.setPassword(null);
+        return Result.success(user);
+    }
+
+    @Operation(summary = "更新个人资料")
+    @PutMapping("/user/profile")
+    public Result<User> updateProfile(@RequestAttribute(required = false) Integer userId, @RequestBody User updates) {
+        if (userId == null) return Result.unauthorized("请先登录");
+        var user = userMapper.selectById(userId);
+        if (user == null) return Result.notFound("用户不存在");
+        if (updates.getRealName() != null) user.setRealName(updates.getRealName());
+        if (updates.getAge() != null) user.setAge(updates.getAge());
+        if (updates.getSex() != null) user.setSex(updates.getSex());
+        if (updates.getPhone() != null) user.setPhone(updates.getPhone());
+        if (updates.getEmail() != null) user.setEmail(updates.getEmail());
+        userMapper.updateById(user);
+        user.setPassword(null);
+        return Result.success(user);
+    }
+
+    @Operation(summary = "修改密码")
+    @PutMapping("/user/password")
+    public Result<?> updatePassword(@RequestAttribute(required = false) Integer userId, @RequestBody Map<String, String> body) {
+        if (userId == null) return Result.unauthorized("请先登录");
+        var user = userMapper.selectById(userId);
+        if (user == null) return Result.notFound("用户不存在");
+        if (!passwordEncoder.matches(body.get("oldPassword"), user.getPassword())) return Result.badRequest("原密码错误");
+        user.setPassword(passwordEncoder.encode(body.get("newPassword")));
+        userMapper.updateById(user);
+        return Result.success();
+    }
+
+    @Operation(summary = "上传文件")
+    @PostMapping("/files/upload")
+    public Result<String> upload(@RequestParam("file") MultipartFile file) { return Result.success(ossClient.upload(file)); }
+
+    @Operation(summary = "用户列表(管理员)")
+    @GetMapping("/admin/users")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<java.util.List<User>> listUsers() {
+        var users = userMapper.selectList(null);
+        users.forEach(u -> u.setPassword(null));
+        return Result.success(users);
+    }
+
+    @Operation(summary = "启用/禁用用户")
+    @PutMapping("/admin/users/{id}/status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<?> toggleUserStatus(@PathVariable Integer id, @RequestBody Map<String, Integer> body) {
+        var user = userMapper.selectById(id);
+        if (user != null) { user.setStatus(body.get("status")); userMapper.updateById(user); }
+        return Result.success();
+    }
+}

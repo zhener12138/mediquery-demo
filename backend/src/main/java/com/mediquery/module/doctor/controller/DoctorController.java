@@ -1,0 +1,52 @@
+package com.mediquery.module.doctor.controller;
+
+import com.mediquery.common.dto.PageResult;
+import com.mediquery.common.dto.Result;
+import com.mediquery.module.doctor.entity.Doctor;
+import com.mediquery.module.doctor.service.DoctorService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@Tag(name = "医生管理")
+@RestController
+@RequestMapping("/api/v1/doctors")
+public class DoctorController {
+
+    private final DoctorService doctorService;
+
+    public DoctorController(DoctorService doctorService) { this.doctorService = doctorService; }
+
+    @Operation(summary = "搜索医生列表")
+    @GetMapping
+    public Result<PageResult<Doctor>> list(@RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String department, @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "9") int size) {
+        return Result.success(doctorService.search(keyword, department, page, size));
+    }
+
+    @Operation(summary = "获取所有在岗医生")
+    @GetMapping("/all") public Result<List<Doctor>> all() { return Result.success(doctorService.listAll()); }
+
+    @Operation(summary = "获取医生详情")
+    @GetMapping("/{id}")
+    public Result<Doctor> detail(@PathVariable Integer id) {
+        var doctor = doctorService.getById(id);
+        return doctor == null ? Result.notFound("医生不存在") : Result.success(doctor);
+    }
+
+    @Operation(summary = "新增医生")
+    @PostMapping @PreAuthorize("hasRole('ADMIN')")
+    public Result<Doctor> create(@RequestBody Doctor doctor) { return Result.success(doctorService.save(doctor)); }
+
+    @Operation(summary = "更新医生信息")
+    @PutMapping("/{id}") @PreAuthorize("hasRole('ADMIN')")
+    public Result<Doctor> update(@PathVariable Integer id, @RequestBody Doctor doctor) { doctor.setId(id); return Result.success(doctorService.update(doctor)); }
+
+    @Operation(summary = "删除医生")
+    @DeleteMapping("/{id}") @PreAuthorize("hasRole('ADMIN')")
+    public Result<?> delete(@PathVariable Integer id) { doctorService.delete(id); return Result.success(); }
+}
