@@ -1,5 +1,8 @@
 package com.mediquery.common.constant;
 
+/**
+ * 系统常量：角色、收藏类型、搜索历史类型
+ */
 public class MedicalConstants {
     private MedicalConstants() {}
 

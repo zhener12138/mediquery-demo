@@ -19,6 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.*;
 
 @Tag(name = "数据大屏")
+/**
+ * 数据大屏控制器：总量统计 + 热门疾病TOP10（仅管理员可访问）
+ */
 @RestController
 @RequestMapping("/api/v1/dashboard")
 @PreAuthorize("hasRole('ADMIN')")
@@ -40,6 +43,7 @@ public class DashboardController {
         this.feedbackMapper = feedbackMapper;
     }
 
+    // 数据总览：统计用户/疾病/药品/医生/反馈总量
     @Operation(summary = "数据总览")
     @GetMapping("/overview")
     public Result<Map<String, Object>> overview() {
@@ -53,6 +57,7 @@ public class DashboardController {
         return Result.success(data);
     }
 
+    // 热门疾病TOP10（按浏览量降序）
     @Operation(summary = "热门疾病排行")
     @GetMapping("/popular/illnesses")
     public Result<List<Map<String, Object>>> popularIllnesses() {
@@ -63,6 +68,7 @@ public class DashboardController {
         return Result.success(result);
     }
 
+    // 分类统计（待实现）
     @Operation(summary = "分类统计")
     @GetMapping("/category-stats")
     public Result<List<Map<String, Object>>> categoryStats() {

@@ -3,6 +3,9 @@ package com.mediquery.common.dto;
 import lombok.Data;
 import java.util.List;
 
+/**
+ * 分页统一返回体
+ */
 @Data
 public class PageResult<T> {
     private long total;

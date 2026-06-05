@@ -12,6 +12,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * AI智能医生控制器：普通对话、SSE流式推送、对话历史查询
+ */
 @Tag(name = "AI智能医生")
 @RestController
 @RequestMapping("/api/v1/ai-doctor")

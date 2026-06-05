@@ -12,6 +12,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * 疾病百科控制器：公开浏览(分页搜索/详情/分类) + 管理员维护(增删改)
+ */
 @Tag(name = "疾病百科")
 @RestController
 @RequestMapping("/api/v1/illnesses")

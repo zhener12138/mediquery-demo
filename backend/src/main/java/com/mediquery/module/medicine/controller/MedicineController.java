@@ -9,6 +9,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 药品百科控制器：公开浏览(按类型/关键词分页搜索/详情) + 管理员维护 + 关联疾病
+ */
 @Tag(name = "药品百科")
 @RestController
 @RequestMapping("/api/v1/medicines")

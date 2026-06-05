@@ -20,6 +20,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 认证服务：登录、注册(JWT双Token)、邮箱验证码(Redis TTL + 60s频率限制)
+ */
 @Service
 public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
@@ -43,6 +46,7 @@ public class AuthService {
     private static final String CODE_RATE_PREFIX = "email:rate:";
     private static final int CODE_EXPIRE_MINUTES = 5;
 
+    // 用户登录：校验账号状态 → BCrypt验密 → 生成双Token
     public TokenResponse login(LoginRequest request) {
         var user = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, request.getUsername()));
@@ -74,6 +78,7 @@ public class AuthService {
         return response;
     }
 
+    // 用户注册：Redis校验验证码 → 查重 → BCrypt加密 → 入库
     public void register(RegisterRequest request) {
         var codeKey = CODE_PREFIX + request.getEmail();
         var savedCode = (String) redisTemplate.opsForValue().get(codeKey);
@@ -108,6 +113,7 @@ public class AuthService {
         log.info("新用户注册: {}", user.getUsername());
     }
 
+    // 发送验证码：60s频率限制 → 生成6位随机数 → 存Redis(5分钟) → 发邮件
     public void sendVerificationCode(SendCodeRequest request) {
         var rateKey = CODE_RATE_PREFIX + request.getEmail();
         if (Boolean.TRUE.equals(redisTemplate.hasKey(rateKey))) {

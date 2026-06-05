@@ -8,6 +8,9 @@ import org.springframework.web.filter.CorsFilter;
 
 import java.util.List;
 
+/**
+ * 跨域配置，允许前端独立部署时跨域访问后端API
+ */
 @Configuration
 public class CorsConfig {
 

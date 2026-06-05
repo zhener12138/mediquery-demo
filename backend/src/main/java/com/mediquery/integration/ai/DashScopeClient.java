@@ -14,6 +14,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 
+/**
+ * 阿里通义千问客户端：封装DashScope SDK，发送System Prompt + 用户消息，返回AI回复
+ */
 @Component
 public class DashScopeClient {
     private static final Logger log = LoggerFactory.getLogger(DashScopeClient.class);
@@ -25,6 +28,7 @@ public class DashScopeClient {
             + "请注意：你只回答与医学、健康相关的问题。对于非医疗问题，请礼貌地引导用户提问医疗相关问题。"
             + "回答时应基于循证医学，当不确定时应建议用户咨询专业医生。";
 
+    // 调用qwen-turbo模型：System Prompt设定角色 → 发送用户消息 → 返回AI回复
     public String chat(String userMessage) {
         try {
             Message systemMsg = Message.builder().role(Role.SYSTEM.getValue()).content(SYSTEM_PROMPT).build();

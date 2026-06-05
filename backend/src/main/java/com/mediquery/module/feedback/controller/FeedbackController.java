@@ -11,6 +11,9 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 意见反馈控制器：用户提交反馈 + 管理员查看/回复
+ */
 @Tag(name = "意见反馈")
 @RestController
 @RequestMapping("/api/v1/feedbacks")

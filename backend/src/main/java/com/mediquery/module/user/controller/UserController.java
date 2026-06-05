@@ -13,6 +13,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 
+/**
+ * 用户控制器：个人信息/修改密码/文件上传 + 管理员用户管理(列表/启用禁用)
+ */
 @Tag(name = "用户管理")
 @RestController
 @RequestMapping("/api/v1")

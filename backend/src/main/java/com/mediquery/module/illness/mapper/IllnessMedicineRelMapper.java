@@ -8,6 +8,9 @@ import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
+/**
+ * 疾病-药品关联Mapper：自定义SQL注解实现多对多关联查询
+ */
 @Mapper
 public interface IllnessMedicineRelMapper extends BaseMapper<IllnessMedicineRel> {
 

@@ -2,6 +2,9 @@ package com.mediquery.module.auth.dto;
 
 import lombok.Data;
 
+/**
+ * 登录响应：accessToken(15min) + refreshToken(7d) + 用户基本信息
+ */
 @Data
 public class TokenResponse {
     private String accessToken;

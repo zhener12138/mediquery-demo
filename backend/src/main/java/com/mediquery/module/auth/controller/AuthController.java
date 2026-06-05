@@ -11,6 +11,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 认证控制器：登录(JWT双Token)、注册(邮箱验证码)、发送验证码
+ */
 @Tag(name = "认证管理")
 @RestController
 @RequestMapping("/api/v1/auth")

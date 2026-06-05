@@ -7,6 +7,9 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/**
+ * MyBatis-Plus 配置：分页插件 + Mapper扫描
+ */
 @Configuration
 @MapperScan("com.mediquery.module.*.mapper")
 public class MyBatisPlusConfig {

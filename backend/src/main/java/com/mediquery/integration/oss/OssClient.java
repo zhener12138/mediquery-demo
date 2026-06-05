@@ -11,6 +11,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 
+/**
+ * 阿里云OSS客户端：文件上传并返回公网可访问URL(UUID防重名)
+ */
 @Component
 public class OssClient {
     private static final Logger log = LoggerFactory.getLogger(OssClient.class);
@@ -27,6 +30,7 @@ public class OssClient {
     @Value("${aliyun.oss.bucket-name}")
     private String bucketName;
 
+    // 上传文件到OSS：UUID防重名 → putObject → 返回公网URL
     public String upload(MultipartFile file) {
         var originalName = file.getOriginalFilename();
         var ext = originalName != null && originalName.contains(".")

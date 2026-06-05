@@ -3,6 +3,9 @@ package com.mediquery.common.dto;
 import lombok.Data;
 import java.time.LocalDateTime;
 
+/**
+ * 统一响应体，所有API返回都用此类包装
+ */
 @Data
 public class Result<T> {
     private int code;

@@ -16,6 +16,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/**
+ * Spring Security 核心配置：JWT无状态认证 + RBAC角色权限控制
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity

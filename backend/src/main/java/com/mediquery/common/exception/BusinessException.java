@@ -1,5 +1,8 @@
 package com.mediquery.common.exception;
 
+/**
+ * 自定义业务异常，用于在Service层抛出，由全局异常处理器统一捕获
+ */
 public class BusinessException extends RuntimeException {
     private final int code;
 

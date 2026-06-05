@@ -12,6 +12,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * AI智能医生服务：普通对话、SSE流式推送(每30ms推送5字符)、对话历史查询(top50)
+ */
 @Service
 public class AiDoctorService {
     private static final Logger log = LoggerFactory.getLogger(AiDoctorService.class);
@@ -24,6 +27,7 @@ public class AiDoctorService {
         this.chatRecordMapper = chatRecordMapper;
     }
 
+    // 普通对话：存用户消息 → 调AI → 存AI回复 → 返回
     public String chat(Integer userId, String message) {
         var sessionId = UUID.randomUUID().toString();
         saveRecord(userId, sessionId, "user", message);
@@ -32,6 +36,7 @@ public class AiDoctorService {
         return reply;
     }
 
+    // SSE流式对话：开新线程 → 调AI → 每30ms推送5字符 → complete
     public SseEmitter chatStream(Integer userId, String message) {
         var emitter = new SseEmitter(60000L);
         var sessionId = UUID.randomUUID().toString();
@@ -53,6 +58,7 @@ public class AiDoctorService {
         return emitter;
     }
 
+    // 查询当前用户最近50条对话历史
     public List<AiChatRecord> getHistory(Integer userId) {
         return chatRecordMapper.selectList(new LambdaQueryWrapper<AiChatRecord>()
                 .eq(AiChatRecord::getUserId, userId)
@@ -60,6 +66,7 @@ public class AiDoctorService {
                 .last("LIMIT 50"));
     }
 
+    // 持久化对话记录（user/assistant）
     private void saveRecord(Integer userId, String sessionId, String role, String content) {
         var record = new AiChatRecord();
         record.setUserId(userId);

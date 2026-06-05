@@ -11,6 +11,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * 医生管理控制器：公开浏览 + 管理员维护(增删改)
+ */
 @Tag(name = "医生管理")
 @RestController
 @RequestMapping("/api/v1/doctors")

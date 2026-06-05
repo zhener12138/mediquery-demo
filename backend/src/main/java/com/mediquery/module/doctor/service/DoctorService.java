@@ -11,6 +11,9 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 
+/**
+ * 医生信息服务：按科室/关键词搜索、sortOrder排序、详情缓存
+ */
 @Service
 public class DoctorService {
 
@@ -20,6 +23,7 @@ public class DoctorService {
         this.doctorMapper = doctorMapper;
     }
 
+    // 多条件分页搜索：状态过滤 → 科室筛选 → 关键词模糊匹配 → sortOrder升序
     public PageResult<Doctor> search(String keyword, String department, int page, int size) {
         var query = new LambdaQueryWrapper<Doctor>().eq(Doctor::getStatus, 1);
         if (StringUtils.hasText(department)) query.eq(Doctor::getDepartment, department);
@@ -30,14 +34,19 @@ public class DoctorService {
         return PageResult.of(result.getTotal(), page, size, result.getRecords());
     }
 
+    // 获取详情（Redis缓存）
     @Cacheable(value = "doctor", key = "#id")
     public Doctor getById(Integer id) { return doctorMapper.selectById(id); }
 
+    // 查询所有在岗医生（用于前端下拉筛选）
     public List<Doctor> listAll() {
         return doctorMapper.selectList(new LambdaQueryWrapper<Doctor>().eq(Doctor::getStatus, 1).orderByAsc(Doctor::getSortOrder));
     }
 
+    // 新增医生（默认在岗）
     public Doctor save(Doctor doctor) { doctor.setStatus(1); doctorMapper.insert(doctor); return doctor; }
+    // 更新医生信息
     public Doctor update(Doctor doctor) { doctorMapper.updateById(doctor); return doctor; }
+    // 删除医生
     public void delete(Integer id) { doctorMapper.deleteById(id); }
 }
