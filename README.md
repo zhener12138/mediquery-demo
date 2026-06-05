@@ -56,15 +56,15 @@
 | **后端框架** | Spring Boot 3.4, Spring Security, Spring Data Redis, Spring Mail |
 | **持久层** | MyBatis-Plus 3.5, MySQL 8.0, Druid 连接池 |
 | **认证** | JWT (jjwt 0.12), BCrypt 密码加密, 双 Token 刷新机制 |
-| **API 文档** | Knife4j (OpenAPI 3.0), 中文界面 |
-| **工具库** | Hutool 5.8, Lombok, EasyExcel 3.3 |
+| **API 文档** | SpringDoc OpenAPI (Swagger UI), 中文界面 |
+| **工具库** | Hutool 5.8, Lombok, EasyExcel 3.3, spring-dotenv |
 | **AI 集成** | 阿里通义千问 (DashScope SDK), SSE 流式对话 |
 | **存储** | 阿里云 OSS（头像上传） |
 | **前端框架** | Vue 3 (Composition API), TypeScript, Vite 6 |
 | **UI 组件** | Element Plus 2.9, @element-plus/icons-vue |
 | **状态管理** | Pinia 2.3 |
 | **图表** | ECharts 5.5 |
-| **部署** | Docker, docker-compose, Nginx 反向代理 |
+| **部署** | Docker, docker-compose, Nginx 反向代理, 多阶段构建 |
 
 ### 架构图
 
@@ -108,30 +108,31 @@
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/YOUR_USERNAME/mediquery-demo.git
+git clone https://github.com/zhener12138/mediquery-demo.git
 cd mediquery-demo
 
 # 2. 配置密钥（非常重要！）
 cp .env.example .env
 # 编辑 .env 文件，填入你的 MySQL 密码、邮箱授权码、DashScope API Key、OSS AccessKey 等
 # 每一项都有注释说明去哪里获取
+# 注意：spring-dotenv 会自动加载 .env，无需手动 export
 
 # 3. 启动
 docker-compose up -d
 
 # 4. 访问
 # 前端: http://localhost
-# 后端 API 文档: http://localhost:8088/doc.html
+# 后端 API 文档: http://localhost:8088/swagger-ui.html
 ```
 
 ### 方式二：本地开发
 
 ```bash
 # 1. 克隆 & 配置密钥（同上）
-git clone https://github.com/YOUR_USERNAME/mediquery-demo.git
+git clone https://github.com/zhener12138/mediquery-demo.git
 cd mediquery-demo
 cp .env.example .env
-# 编辑 .env
+# 编辑 .env，spring-dotenv 在启动时自动加载
 
 # 2. 导入数据库
 # 执行 backend/src/main/resources/db/init.sql
@@ -139,7 +140,7 @@ cp .env.example .env
 # 3. 启动后端
 cd backend
 mvn spring-boot:run
-# API 文档: http://localhost:8088/doc.html
+# API 文档: http://localhost:8080/swagger-ui.html
 
 # 4. 启动前端（新终端）
 cd frontend
@@ -158,6 +159,8 @@ npm run dev
 | `ALIYUN_OSS_*` | 阿里云 OSS 配置 | [RAM 访问控制](https://ram.console.aliyun.com/manage/ak) |
 
 > ⚠️ **`.env` 文件已加入 `.gitignore`，不会被提交。** `.env.example` 作为模板可以安全提交。
+>
+> 项目已集成 `spring-dotenv`，Spring Boot 启动时自动读取项目根目录的 `.env` 文件，无需手动 export 环境变量。
 
 ---
 
@@ -169,7 +172,7 @@ mediquery-demo/
 │   ├── src/main/java/com/mediquery/
 │   │   ├── MediQueryApplication.java
 │   │   ├── common/                  # 通用组件（DTO, 全局异常处理, 拦截器）
-│   │   ├── config/                  # 配置（Security, JWT, Knife4j, Redis, CORS）
+│   │   ├── config/                  # 配置（Security, JWT, OpenAPI, Redis, CORS）
 │   │   ├── security/                # JWT 工具类 & Spring Security 过滤器
 │   │   ├── module/
 │   │   │   ├── auth/                # 认证模块（注册/登录/验证码）
@@ -185,8 +188,8 @@ mediquery-demo/
 │   │       ├── email/EmailClient.java       # 邮件发送
 │   │       └── oss/OssClient.java           # 阿里云 OSS 上传
 │   └── src/main/resources/
-│       ├── application.yml          # 主配置（密钥通过环境变量注入）
-│       └── db/init.sql              # 数据库初始化脚本
+│       ├── application.yml          # 主配置（密钥通过 .env 注入）
+│       └── db/init.sql              # 数据库初始化脚本（含种子数据）
 │
 ├── frontend/                        # Vue 3 前端
 │   ├── src/
@@ -210,9 +213,22 @@ mediquery-demo/
 
 ## 📖 接口文档
 
-启动后端后访问：**http://localhost:8088/doc.html**
+启动后端后访问：**http://localhost:8080/swagger-ui.html**
 
-Knife4j 提供了中文界面的 Swagger UI，可直接在线调试 API。
+SpringDoc OpenAPI (Swagger UI) 提供了在线可视化 API 文档，可直接调试接口。所有需要认证的接口右上角可填入 Bearer Token。
+
+---
+
+## 💡 设计亮点
+
+- **无状态认证**：JWT + Spring Security，服务端不存 Session，支持水平扩展
+- **双 Token 机制**：Access Token（15分钟）+ Refresh Token（7天），兼顾安全与体验
+- **SSE 流式对话**：AI 回复逐字推送到前端，类似 ChatGPT 的打字效果
+- **环境变量管理**：spring-dotenv 自动加载 `.env`，敏感信息不入库
+- **多阶段 Docker 构建**：编译与运行分离，最终镜像仅含 JRE + jar，体积小
+- **逻辑删除**：MyBatis-Plus @TableLogic，数据可恢复，保留历史追溯
+- **全文搜索**：MySQL ngram 分词器，支持中文模糊搜索
+- **Redis 缓存**：疾病/药品查询结果缓存，减少数据库压力
 
 ---
 

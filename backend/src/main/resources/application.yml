@@ -1,3 +1,6 @@
+# Dotenv
+spring.dotenv.path: ./.env
+
 spring:
   application:
     name: mediquery
@@ -64,17 +67,12 @@ logging:
   level:
     com.mediquery: debug
 
-# Knife4j
+# SpringDoc OpenAPI
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
   api-docs:
     path: /v3/api-docs
-
-knife4j:
-  enable: true
-  setting:
-    language: zh_cn
 
 # JWT
 jwt:
