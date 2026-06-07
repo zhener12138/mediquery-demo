@@ -40,7 +40,7 @@ public class AiDoctorController {
     @Operation(summary = "流式对话 (SSE)")
     @PostMapping("/chat/stream")
     public SseEmitter chatStream(Authentication auth, @RequestBody Map<String, String> body) {
-        return aiDoctorService.chatStream(getUserId(auth), body.get("content"));
+        return aiDoctorService.chatStream(getUserId(auth), body.get("sessionId"), body.get("content"));
     }
 
     @Operation(summary = "获取对话历史")

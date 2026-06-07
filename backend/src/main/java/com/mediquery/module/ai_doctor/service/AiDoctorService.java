@@ -10,8 +10,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.ArrayList;
+
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -69,18 +70,24 @@ public class AiDoctorService {
                 .last("LIMIT 20"));
     }
 
-    /** SSE 流式对话 */
-    public SseEmitter chatStream(Integer userId, String message) {
-        var emitter = new SseEmitter(60000L);
-        var sessionId = UUID.randomUUID().toString();
-        saveRecord(userId, sessionId, "user", message);
+    /** SSE 流式对话（RAG + 多轮） */
+    public SseEmitter chatStream(Integer userId, String sessionId, String message) {
+        var emitter = new SseEmitter(120000L);
+        var sid = sessionId != null ? sessionId : UUID.randomUUID().toString();
+        saveRecord(userId, sid, "user", message);
         new Thread(() -> {
             try {
-                var reply = dashScopeClient.chat(message);
-                saveRecord(userId, sessionId, "assistant", reply);
+                var history = getSessionHistory(userId, sid);
+                var knowledge = knowledgeService.retrieve(message);
+                var reply = dashScopeClient.chatWithHistory(sid, message, history, knowledge);
+                saveRecord(userId, sid, "assistant", reply);
+                // 逐字推送
                 for (int i = 0; i < reply.length(); i++) {
-                    emitter.send(SseEmitter.event().data(reply.substring(i, Math.min(i + 5, reply.length()))));
-                    Thread.sleep(30);
+                    int end = Math.min(i + 3, reply.length());
+                    emitter.send(SseEmitter.event()
+                            .name("delta")
+                            .data(Map.of("chunk", reply.substring(i, end), "sessionId", sid)));
+                    Thread.sleep(25);
                 }
                 emitter.complete();
             } catch (Exception e) {

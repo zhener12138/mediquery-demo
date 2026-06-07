@@ -53,11 +53,53 @@ async function send() {
   input.value = ''
   scrollBottom()
   typing.value = true
+
+  // 先放一个空的 assistant 气泡，逐字填充
+  const aiIdx = messages.value.length
+  messages.value.push({ role: 'assistant', content: '' })
+
   try {
-    const res = await api.post('/ai-doctor/chat', { content: userMsg, sessionId: sessionId.value || undefined })
-    sessionId.value = res.data.sessionId  // 保存后端返回的sessionId，下次请求带回
-    messages.value.push({ role: 'assistant', content: res.data.reply })
-  } catch (e) {} finally { typing.value = false; scrollBottom() }
+    const token = auth.token
+    const body = JSON.stringify({ content: userMsg, sessionId: sessionId.value || undefined })
+    const resp = await fetch('/api/v1/ai-doctor/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body
+    })
+    const reader = resp.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        if (line.startsWith('data:')) {
+          try {
+            const raw = line.slice(5).trim()
+            if (!raw) continue
+            const data = JSON.parse(raw)
+            if (data.chunk) {
+              messages.value[aiIdx].content += data.chunk
+            }
+            if (data.sessionId && !sessionId.value) {
+              sessionId.value = data.sessionId
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch (e) {
+    // fallback to non-streaming
+    try {
+      messages.value[aiIdx].content = '智能医生暂时无法连接，请稍后重试。'
+    } catch {}
+  } finally {
+    typing.value = false
+    scrollBottom()
+  }
 }
 
 onMounted(() => { messages.value.push({ role: 'assistant', content: '您好！我是医问通智能医生，请问有什么可以帮您的？' }) })
