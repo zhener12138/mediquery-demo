@@ -2,6 +2,7 @@ package com.mediquery.module.ai_doctor.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mediquery.integration.ai.DashScopeClient;
+import com.mediquery.integration.ai.KnowledgeRetrievalService;
 import com.mediquery.module.ai_doctor.entity.AiChatRecord;
 import com.mediquery.module.ai_doctor.mapper.AiChatRecordMapper;
 import org.slf4j.Logger;
@@ -13,30 +14,43 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * AI智能医生服务：普通对话、SSE流式推送(每30ms推送5字符)、对话历史查询(top50)
+ * AI智能医生服务：RAG 检索增强对话、SSE流式推送、对话历史查询。
+ * 流程：用户提问 → 检索疾病/药品 → 注入上下文 → 调用千问 → 缓存上下文 → 返回回答。
  */
 @Service
 public class AiDoctorService {
     private static final Logger log = LoggerFactory.getLogger(AiDoctorService.class);
 
     private final DashScopeClient dashScopeClient;
+    private final KnowledgeRetrievalService knowledgeService;
     private final AiChatRecordMapper chatRecordMapper;
 
-    public AiDoctorService(DashScopeClient dashScopeClient, AiChatRecordMapper chatRecordMapper) {
+    public AiDoctorService(DashScopeClient dashScopeClient,
+                           KnowledgeRetrievalService knowledgeService,
+                           AiChatRecordMapper chatRecordMapper) {
         this.dashScopeClient = dashScopeClient;
+        this.knowledgeService = knowledgeService;
         this.chatRecordMapper = chatRecordMapper;
     }
 
-    // 普通对话：存用户消息 → 调AI → 存AI回复 → 返回
-    public String chat(Integer userId, String message) {
-        var sessionId = UUID.randomUUID().toString();
+    /**
+     * RAG 增强对话：检索知识库 → 注入上下文 → 调用千问 → 缓存上下文。
+     * 相同 sessionId 的后续消息会复用 Redis 缓存的上下文，减少重复检索。
+     */
+    public String chat(Integer userId, String sessionId, String message) {
         saveRecord(userId, sessionId, "user", message);
-        var reply = dashScopeClient.chat(message);
+
+        var knowledge = knowledgeService.retrieve(message);
+        var reply = dashScopeClient.chatWithContext(sessionId, message, knowledge);
+
         saveRecord(userId, sessionId, "assistant", reply);
         return reply;
     }
 
-    // SSE流式对话：开新线程 → 调AI → 每30ms推送5字符 → complete
+    /**
+     * SSE 流式对话（非 RAG，保持简单）。
+     * 流式模式下每 30ms 推送 5 字符，模拟打字效果。
+     */
     public SseEmitter chatStream(Integer userId, String message) {
         var emitter = new SseEmitter(60000L);
         var sessionId = UUID.randomUUID().toString();
@@ -58,7 +72,7 @@ public class AiDoctorService {
         return emitter;
     }
 
-    // 查询当前用户最近50条对话历史
+    /** 查询当前用户最近 50 条对话历史 */
     public List<AiChatRecord> getHistory(Integer userId) {
         return chatRecordMapper.selectList(new LambdaQueryWrapper<AiChatRecord>()
                 .eq(AiChatRecord::getUserId, userId)
@@ -66,7 +80,7 @@ public class AiDoctorService {
                 .last("LIMIT 50"));
     }
 
-    // 持久化对话记录（user/assistant）
+    /** 持久化对话记录 */
     private void saveRecord(Integer userId, String sessionId, String role, String content) {
         var record = new AiChatRecord();
         record.setUserId(userId);

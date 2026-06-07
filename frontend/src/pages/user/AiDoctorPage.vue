@@ -38,6 +38,7 @@ const input = ref('')
 const typing = ref(false)
 const messages = ref<{ role: string; content: string }[]>([])
 const msgContainer = ref<HTMLElement>()
+const sessionId = ref('')  // 会话ID，用于多轮RAG上下文复用
 
 function scrollBottom() {
   nextTick(() => {
@@ -53,7 +54,8 @@ async function send() {
   scrollBottom()
   typing.value = true
   try {
-    const res = await api.post('/ai-doctor/chat', { content: userMsg })
+    const res = await api.post('/ai-doctor/chat', { content: userMsg, sessionId: sessionId.value || undefined })
+    sessionId.value = res.data.sessionId  // 保存后端返回的sessionId，下次请求带回
     messages.value.push({ role: 'assistant', content: res.data.reply })
   } catch (e) {} finally { typing.value = false; scrollBottom() }
 }

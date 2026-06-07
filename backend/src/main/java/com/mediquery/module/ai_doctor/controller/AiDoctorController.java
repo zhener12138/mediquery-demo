@@ -11,9 +11,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * AI智能医生控制器：普通对话、SSE流式推送、对话历史查询
+ * AI智能医生控制器：RAG 增强对话、SSE流式推送、对话历史查询。
  */
 @Tag(name = "AI智能医生")
 @RestController
@@ -24,11 +25,16 @@ public class AiDoctorController {
 
     public AiDoctorController(AiDoctorService aiDoctorService) { this.aiDoctorService = aiDoctorService; }
 
+    /**
+     * RAG 增强对话：前端传入 sessionId 用于维护知识上下文缓存。
+     * 首次对话由前端生成 UUID 作为 sessionId，后续消息复用。
+     */
     @Operation(summary = "发送消息给智能医生")
     @PostMapping("/chat")
     public Result<Map<String, String>> chat(Authentication auth, @RequestBody Map<String, String> body) {
-        var reply = aiDoctorService.chat(getUserId(auth), body.get("content"));
-        return Result.success(Map.of("reply", reply));
+        var sessionId = body.getOrDefault("sessionId", UUID.randomUUID().toString());
+        var reply = aiDoctorService.chat(getUserId(auth), sessionId, body.get("content"));
+        return Result.success(Map.of("reply", reply, "sessionId", sessionId));
     }
 
     @Operation(summary = "流式对话 (SSE)")
@@ -39,10 +45,11 @@ public class AiDoctorController {
 
     @Operation(summary = "获取对话历史")
     @GetMapping("/history")
-    public Result<List<AiChatRecord>> history(Authentication auth) { return Result.success(aiDoctorService.getHistory(getUserId(auth))); }
+    public Result<List<AiChatRecord>> history(Authentication auth) {
+        return Result.success(aiDoctorService.getHistory(getUserId(auth)));
+    }
 
     private Integer getUserId(Authentication auth) {
-        // userId 通过 auth.details 从 JWT token 中的 userId claim 获取
         var userId = auth.getDetails();
         if (userId instanceof Long) {
             return ((Long) userId).intValue();
