@@ -10,12 +10,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * AI智能医生服务：RAG 检索增强对话、SSE流式推送、对话历史查询。
- * 流程：用户提问 → 检索疾病/药品 → 注入上下文 → 调用千问 → 缓存上下文 → 返回回答。
+ * AI智能医生服务：RAG 检索增强 + 多轮对话历史 + SSE流式。
  */
 @Service
 public class AiDoctorService {
@@ -34,23 +34,42 @@ public class AiDoctorService {
     }
 
     /**
-     * RAG 增强对话：检索知识库 → 注入上下文 → 调用千问 → 缓存上下文。
-     * 相同 sessionId 的后续消息会复用 Redis 缓存的上下文，减少重复检索。
+     * RAG + 多轮对话：
+     * 1. 存用户消息
+     * 2. 查当前 session 历史（最近20条）
+     * 3. 检索疾病/药品知识
+     * 4. 调千问（带历史+知识上下文）
+     * 5. 缓存知识上下文到 Redis
+     * 6. 存 AI 回复
      */
     public String chat(Integer userId, String sessionId, String message) {
         saveRecord(userId, sessionId, "user", message);
 
+        // 获取当前 session 的对话历史
+        var history = getSessionHistory(userId, sessionId);
+
+        // 检索知识库
         var knowledge = knowledgeService.retrieve(message);
-        var reply = dashScopeClient.chatWithContext(sessionId, message, knowledge);
+
+        // 调用大模型（带历史对话 + 知识上下文）
+        var reply = dashScopeClient.chatWithHistory(sessionId, message, history, knowledge);
 
         saveRecord(userId, sessionId, "assistant", reply);
         return reply;
     }
 
     /**
-     * SSE 流式对话（非 RAG，保持简单）。
-     * 流式模式下每 30ms 推送 5 字符，模拟打字效果。
+     * 获取同一 session 的最近 20 条对话历史，按时间正序排列。
      */
+    private List<AiChatRecord> getSessionHistory(Integer userId, String sessionId) {
+        return chatRecordMapper.selectList(new LambdaQueryWrapper<AiChatRecord>()
+                .eq(AiChatRecord::getUserId, userId)
+                .eq(AiChatRecord::getSessionId, sessionId)
+                .orderByAsc(AiChatRecord::getCreateTime)
+                .last("LIMIT 20"));
+    }
+
+    /** SSE 流式对话 */
     public SseEmitter chatStream(Integer userId, String message) {
         var emitter = new SseEmitter(60000L);
         var sessionId = UUID.randomUUID().toString();
@@ -72,7 +91,6 @@ public class AiDoctorService {
         return emitter;
     }
 
-    /** 查询当前用户最近 50 条对话历史 */
     public List<AiChatRecord> getHistory(Integer userId) {
         return chatRecordMapper.selectList(new LambdaQueryWrapper<AiChatRecord>()
                 .eq(AiChatRecord::getUserId, userId)
@@ -80,7 +98,6 @@ public class AiDoctorService {
                 .last("LIMIT 50"));
     }
 
-    /** 持久化对话记录 */
     private void saveRecord(Integer userId, String sessionId, String role, String content) {
         var record = new AiChatRecord();
         record.setUserId(userId);

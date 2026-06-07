@@ -7,6 +7,7 @@ import com.alibaba.dashscope.common.Role;
 import com.alibaba.dashscope.exception.ApiException;
 import com.alibaba.dashscope.exception.InputRequiredException;
 import com.alibaba.dashscope.exception.NoApiKeyException;
+import com.mediquery.module.ai_doctor.entity.AiChatRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,12 +17,10 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
- * 阿里通义千问客户端：封装DashScope SDK，支持 System Prompt + 知识上下文 + 用户消息多轮对话。
- * 知识上下文通过 Redis 按 sessionId 缓存，7天自动过期。
+ * 阿里通义千问客户端：多轮对话 + RAG 知识上下文 + Redis 缓存。
  */
 @Component
 public class DashScopeClient {
@@ -43,22 +42,21 @@ public class DashScopeClient {
         this.redisTemplate = redisTemplate;
     }
 
-    /**
-     * 普通对话（无上下文缓存，一次性注入检索结果）。
-     */
+    /** 简单对话（无历史，无上下文） */
     public String chat(String userMessage) {
-        return doChat(null, userMessage, "");
+        return doChat(List.of(), userMessage, "");
     }
 
     /**
-     * RAG 对话：使用 Redis 缓存的上下文，有新的检索结果时更新缓存。
-     *
-     * @param sessionId   会话ID，用作 Redis key
-     * @param userMessage 用户消息
-     * @param knowledge   检索到的知识上下文（首次检索非空时会缓存）
+     * 带历史的多轮 RAG 对话。
+     * @param sessionId 会话ID
+     * @param userMessage 当前用户消息
+     * @param history 同一 session 的历史对话
+     * @param knowledge 检索到的知识上下文
      */
-    public String chatWithContext(String sessionId, String userMessage, String knowledge) {
-        // 读缓存；如有新知识则更新
+    public String chatWithHistory(String sessionId, String userMessage,
+                                   List<AiChatRecord> history, String knowledge) {
+        // 管理知识上下文缓存
         String context;
         if (StringUtils.hasText(knowledge)) {
             context = knowledge;
@@ -67,27 +65,35 @@ public class DashScopeClient {
             var cached = redisTemplate.opsForValue().get(CTX_KEY_PREFIX + sessionId);
             context = cached != null ? cached.toString() : "";
         }
-        return doChat(sessionId, userMessage, context);
+        return doChat(history, userMessage, context);
     }
 
     /**
-     * 核心调用：System Prompt + 可选知识上下文 + 用户消息 → qwen-turbo → 回复。
+     * 拼装 messages：System Prompt → 知识上下文 → 历史对话 → 当前消息。
      */
-    private String doChat(String sessionId, String userMessage, String knowledgeContext) {
+    private String doChat(List<AiChatRecord> history, String userMessage, String knowledgeContext) {
         try {
             List<Message> messages = new ArrayList<>();
 
-            // System prompt（含角色设定）
+            // 1. System prompt
             messages.add(Message.builder().role(Role.SYSTEM.getValue()).content(SYSTEM_PROMPT).build());
 
-            // 知识上下文（检索到的疾病/药品信息）
+            // 2. 知识上下文
             if (StringUtils.hasText(knowledgeContext)) {
                 messages.add(Message.builder().role(Role.SYSTEM.getValue())
-                        .content("请基于以下知识库信息回答用户问题，不要编造知识库中没有的内容：\n\n" + knowledgeContext)
+                        .content("请基于以下知识库信息回答用户问题：\n\n" + knowledgeContext)
                         .build());
             }
 
-            // 用户消息
+            // 3. 历史对话（排除当前这条）
+            for (var record : history) {
+                messages.add(Message.builder()
+                        .role(record.getRole())
+                        .content(record.getContent())
+                        .build());
+            }
+
+            // 4. 当前用户消息
             messages.add(Message.builder().role(Role.USER.getValue()).content(userMessage).build());
 
             var gen = new Generation();
