@@ -54,9 +54,9 @@ async function send() {
   scrollBottom()
   typing.value = true
 
-  // 先放一个空的 assistant 气泡，逐字填充
-  const aiIdx = messages.value.length
-  messages.value.push({ role: 'assistant', content: '' })
+  // 打字中：只显示动画，不推空气泡
+  let aiIdx = -1  // 等收到第一个chunk再push
+  let streamDone = false
 
   try {
     const token = auth.token
@@ -71,7 +71,7 @@ async function send() {
     let buffer = ''
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) { streamDone = true; break }
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
       buffer = lines.pop() || ''
@@ -82,7 +82,14 @@ async function send() {
             if (!raw) continue
             const data = JSON.parse(raw)
             if (data.chunk) {
-              messages.value[aiIdx].content += data.chunk
+              if (aiIdx === -1) {
+                // 第一个chunk到达：关闭思考动画，推气泡
+                typing.value = false
+                messages.value.push({ role: 'assistant', content: data.chunk })
+                aiIdx = messages.value.length - 1
+              } else {
+                messages.value[aiIdx].content += data.chunk
+              }
             }
             if (data.sessionId && !sessionId.value) {
               sessionId.value = data.sessionId
@@ -92,12 +99,15 @@ async function send() {
       }
     }
   } catch (e) {
-    // fallback to non-streaming
-    try {
-      messages.value[aiIdx].content = '智能医生暂时无法连接，请稍后重试。'
-    } catch {}
+    if (aiIdx === -1) {
+      messages.value.push({ role: 'assistant', content: '智能医生暂时无法连接，请稍后重试。' })
+    }
   } finally {
     typing.value = false
+    // SSE 流正常结束但没收到任何数据
+    if (aiIdx === -1 && streamDone) {
+      messages.value.push({ role: 'assistant', content: '智能医生暂时无法连接，请稍后重试。' })
+    }
     scrollBottom()
   }
 }

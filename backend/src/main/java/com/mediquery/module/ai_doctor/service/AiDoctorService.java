@@ -11,6 +11,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -25,13 +30,16 @@ public class AiDoctorService {
     private final DashScopeClient dashScopeClient;
     private final KnowledgeRetrievalService knowledgeService;
     private final AiChatRecordMapper chatRecordMapper;
+    private final ObjectMapper objectMapper;
 
     public AiDoctorService(DashScopeClient dashScopeClient,
                            KnowledgeRetrievalService knowledgeService,
-                           AiChatRecordMapper chatRecordMapper) {
+                           AiChatRecordMapper chatRecordMapper,
+                           ObjectMapper objectMapper) {
         this.dashScopeClient = dashScopeClient;
         this.knowledgeService = knowledgeService;
         this.chatRecordMapper = chatRecordMapper;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -75,24 +83,27 @@ public class AiDoctorService {
         var emitter = new SseEmitter(120000L);
         var sid = sessionId != null ? sessionId : UUID.randomUUID().toString();
         saveRecord(userId, sid, "user", message);
+        var secCtx = SecurityContextHolder.getContext();  // 捕获当前安全上下文
         new Thread(() -> {
+            SecurityContextHolder.setContext(secCtx);  // 传递到子线程
             try {
                 var history = getSessionHistory(userId, sid);
                 var knowledge = knowledgeService.retrieve(message);
                 var reply = dashScopeClient.chatWithHistory(sid, message, history, knowledge);
                 saveRecord(userId, sid, "assistant", reply);
-                // 逐字推送
-                for (int i = 0; i < reply.length(); i++) {
+                for (int i = 0; i < reply.length(); i += 3) {
                     int end = Math.min(i + 3, reply.length());
-                    emitter.send(SseEmitter.event()
-                            .name("delta")
-                            .data(Map.of("chunk", reply.substring(i, end), "sessionId", sid)));
-                    Thread.sleep(25);
+                    var data = objectMapper.writeValueAsString(
+                            Map.of("chunk", reply.substring(i, end), "sessionId", sid));
+                    emitter.send(SseEmitter.event().name("delta").data(data));
+                    Thread.sleep(20);
                 }
                 emitter.complete();
             } catch (Exception e) {
                 log.error("SSE 流式输出异常", e);
                 emitter.completeWithError(e);
+            } finally {
+                SecurityContextHolder.clearContext();
             }
         }).start();
         return emitter;
