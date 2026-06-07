@@ -53,11 +53,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             var claims = jwtUtil.parseToken(token);
             var username = claims.getSubject();
+            var userId = claims.get("userId", Long.class);
             var role = claims.get("role", Integer.class);
             var roleName = (role != null && role == 1) ? "ROLE_ADMIN" : "ROLE_USER";
 
             var auth = new UsernamePasswordAuthenticationToken(
                     username, null, List.of(new SimpleGrantedAuthority(roleName)));
+            auth.setDetails(userId);
             SecurityContextHolder.getContext().setAuthentication(auth);
         } catch (Exception e) {
             log.warn("JWT 解析失败: {}", e.getMessage());

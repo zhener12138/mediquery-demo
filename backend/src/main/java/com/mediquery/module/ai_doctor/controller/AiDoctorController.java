@@ -41,5 +41,12 @@ public class AiDoctorController {
     @GetMapping("/history")
     public Result<List<AiChatRecord>> history(Authentication auth) { return Result.success(aiDoctorService.getHistory(getUserId(auth))); }
 
-    private Integer getUserId(Authentication auth) { return 1; }
+    private Integer getUserId(Authentication auth) {
+        // userId 通过 auth.details 从 JWT token 中的 userId claim 获取
+        var userId = auth.getDetails();
+        if (userId instanceof Long) {
+            return ((Long) userId).intValue();
+        }
+        throw new IllegalStateException("无法从认证信息中获取用户ID");
+    }
 }
