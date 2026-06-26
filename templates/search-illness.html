@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block body_class %}{% endblock %}
+{% block back %}{% include "common/back.html" %}{% endblock %}
+{% block content %}
+
+<section class="search-list bg-sfgrey-3">
+    <div class="container">
+        <h2 style="text-align:center;margin-bottom:30px;margin-top:-70px;color:#204066">{{ title | default('全部') }}</h2>
+        {% if illness and illness|length > 0 %}
+        <div class="row">
+            {% for illnessOne in illness %}
+            <div class="col-lg-4 col-md-6 mb-3">
+                <div class="search-list-wp bg-white">
+                    <div class="p-4" style="height:250px">
+                        <h5 class="mb-3">
+                            <a href="/illness/{{ illnessOne.id }}" class="cl-blue">{{ illnessOne.illness_name }}</a>
+                        </h5>
+                        <p>{{ illnessOne.include_reason[:200] if illnessOne.include_reason else '' }}</p>
+                    </div>
+                    <ul class="border-top border-light-c">
+                        <li>{{ illnessOne.create_time.strftime('%Y-%m-%d %H:%M:%S') if illnessOne.create_time else '' }} |
+                            <a href="/illnesses?kind={{ illnessOne.kind_id if illnessOne.get('kindName') != '暂无归属类' else '' }}">{{ illnessOne.get('kindName', '暂无归属类') }}</a>
+                        </li>
+                        <li style="float:right"><i class="fa fa-eye" aria-hidden="true"></i>{{ illnessOne.get('pageview', 0) }}</li>
+                    </ul>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="text-align:center" class="row">
+            <h4>没有搜索到相应的结果，可联系管理员加入</h4>
+        </div>
+        {% endif %}
+
+        {% if illness and illness|length > 0 %}
+        <div style="text-align:center">
+            {% if page > 1 %}
+            <a href="/illnesses?{% if kind %}kind={{ kind }}&{% endif %}{% if illnessName %}illnessName={{ illnessName }}&{% endif %}page={{ page - 1 }}" style="right:5px"><span>上一页</span></a>
+            {% endif %}
+            {% if page < size %}
+            <a href="/illnesses?{% if kind %}kind={{ kind }}&{% endif %}{% if illnessName %}illnessName={{ illnessName }}&{% endif %}page={{ page + 1 }}" style="margin-left:5px"><span>下一页</span></a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+{% endblock %}

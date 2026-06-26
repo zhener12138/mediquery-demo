@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block body_class %}{% endblock %}
+{% block back %}{% include "common/back.html" %}{% endblock %}
+{% block content %}
+
+<div id="dashboard">
+    <div class="container">
+        <div class="dashboard-main">
+            <div class="row">
+                <div class="col-lg-3 col-md-12 col-sm-12 col-xs-12">
+                    {% with cur='illness' %}{% include "common/sidebar.html" %}{% endwith %}
+                </div>
+                <div class="col-lg-9 col-md-12 col-sm-12 col-xs-12">
+                    <div class="dashboard-content">
+                        <div class="row mb-4">
+                            <div class="col-lg-12 col-md-12 col-xs-12">
+                                <div class="dashboard-list-box with-icons">
+                                    <div class="dashboard-title">
+                                        <h4 class="mb-0">全部疾病 </h4>
+                                        <p class="mb-0">共收集 {{ illnesses|length if illnesses else 0 }} 条疾病信息。你可以继续<a href="/admin/illnesses/edit">新增疾病</a>。
+                                        </p>
+                                    </div>
+                                    <div class="table-responsive table-desi">
+                                        <table class="basic-table table table-hover">
+                                            <thead>
+                                            <tr>
+                                                <th>分类</th>
+                                                <th>名称</th>
+                                                <th>特殊症状</th>
+                                                <th>更新时间</th>
+                                                <th>操作</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            {% if illnesses %}
+                                            {% for illness in illnesses %}
+                                            <tr>
+                                                <td>{{ illness.kind.name if illness.kind else '' }}</td>
+                                                <td>{{ illness.illness_name }}</td>
+                                                <td>{{ illness.special_symptom }}</td>
+                                                <td>{{ illness.update_time.strftime('%Y-%m-%d %H:%M:%S') if illness.update_time else '' }}</td>
+                                                <td>
+                                                    <a href="/illness/{{ illness.id }}"><i class="fa fa-eye text-info" aria-hidden="true"></i> </a>
+                                                    <a href="/admin/illnesses/edit?id={{ illness.id }}"><i class="fa fa-pencil-square-o text-primary" aria-hidden="true"></i> </a>
+                                                    <a onclick="deleteIllness({{ illness.id }})" href="javascript:void(0)"><i class="fa fa-trash-o text-danger" aria-hidden="true"></i> </a>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                            {% endif %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

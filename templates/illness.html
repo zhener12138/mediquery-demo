@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block body_class %}{% endblock %}
+{% block back %}{% include "common/back.html" %}{% endblock %}
+{% block content %}
+
+<div id="dashboard">
+    <div class="container">
+        <div class="dashboard-main">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <div class="dashboard-content">
+                        <div class="dashboard-review single-comments">
+                            <div class="comments">
+                                <div style="margin-top:30px;text-align:center">
+                                    <h3>{{ ('与' + title + '相关的药如下') if title else '全部' }}</h3>
+                                </div>
+                                {% if medicineList %}
+                                {% for me in medicineList %}
+                                <div class="comment-box d-flex align-items-center justify-content-between">
+                                    <div class="comment-image">
+                                        <a href="/medicine/{{ me.id }}">
+                                            <img src="{{ me.img_path }}" alt="image" onerror="this.onerror=null;this.src='/static/assets/images/default-medicine.svg'">
+                                        </a>
+                                    </div>
+                                    <div class="comment-content" style="width:80%;height:150px">
+                                        <a href="/medicine/{{ me.id }}">
+                                            <h5 class="m-0">{{ me.medicine_name }}</h5>
+                                        </a>
+                                        <p class="comment-date mb-2">{{ me.medicine_brand }}牌</p>
+                                        <span class="num-rating white">{{ '西药' if me.medicine_type == 0 else ('中药' if me.medicine_type == 1 else '中成药') }}</span>
+                                        <span class="comment-title"><i>"是药三分毒，切忌不要乱吃药！"</i></span>
+                                        <p class="comment mt-2">{{ me.medicine_effect[:200] if me.medicine_effect else '' }}</p>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

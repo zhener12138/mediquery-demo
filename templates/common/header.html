@@ -1,0 +1,62 @@
+<header id="header" class="main_header_area">
+    <div class="topbar-wrap bg-dblue">
+        <div class="container">
+            <div class="top-info d-flex justify-content-between align-items-center">
+                <ul class="t-address">
+                    <li class="pr-2"><i class="far fa-clock"></i>丹心擘划宏图展，医界绽奇葩。【欢迎来到智慧医药系统】本项目原创作者：<a href="https://github.com/zhener12138">甄同学</a></li>
+                </ul>
+                <ul class="t-social">
+                    <li>
+                        <span class="ct-search-link"><a href="#"><i class="fa fa-search"></i> 搜索一下</a></span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="header_menu">
+        <nav class="navbar navbar-default">
+            <div class="container">
+                <div class="navbar-flex d-flex align-items-center justify-content-between w-100">
+                    <div class="navbar-header">
+                        <a class="navbar-brand text-center" href="/">
+                            <img src="/static/assets/images/logo.png" alt="image">
+                        </a>
+                    </div>
+
+                    <div class="navbar-collapse1" id="bs-example-navbar-collapse-1">
+                        <ul class="nav navbar-nav" id="responsive-menu">
+                            <li><a href="/illnesses">疾病百科</a></li>
+                            <li><a href="/medicines">查找药品</a></li>
+                            <li><a href="/doctor">智能医生</a></li>
+                        </ul>
+                    </div>
+
+                    {% if not loginUser %}
+                    <div class="header-btn">
+                        <input id="loginAccount" type="text" placeholder="登录账户">
+                    </div>
+                    <div class="header-btn">
+                        <input id="loginPassword" type="password" placeholder="密码">
+                    </div>
+                    <div class="header-btn">
+                        <button class="btn btn-na" onclick="login()">登录</button>
+                    </div>
+                    {% else %}
+                    <div class="register-login">
+                        <div class="dropdown">
+                            <button class="btn-dash dropdown-toggle" type="button" id="dropdownMenuButton11" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fa fa-user-circle"></i> 欢迎你【 {{ loginUser.user_name }} 】
+                            </button>
+                            <div class="dropdown-menu" aria-labelledby="dropdownMenuButton11">
+                                <a class="dropdown-item" href="/profile"><i class="sl sl-icon-user"></i> 我的资料</a>
+                                <a class="dropdown-item" href="/logout"><i class="sl sl-icon-power"></i> 退出登录</a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </nav>
+    </div>
+</header>

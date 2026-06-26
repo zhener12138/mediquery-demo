@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block body_class %}{% endblock %}
+{% block back %}{% include "common/back.html" %}{% endblock %}
+{% block content %}
+
+<div id="dashboard">
+    <div class="container">
+        <div class="dashboard-main">
+            <div class="row">
+                <div class="col-lg-3 col-md-12 col-sm-12 col-xs-12">
+                    {% with cur='feedback' %}{% include "common/sidebar.html" %}{% endwith %}
+                </div>
+                <div class="col-lg-9 col-md-12 col-sm-12 col-xs-12">
+                    <div class="dashboard-content">
+                        <div class="row mb-4">
+                            <div class="col-lg-12 col-md-12 col-xs-12">
+                                <div class="dashboard-list-box with-icons">
+                                    <div class="dashboard-title">
+                                        <h4 class="mb-0">反馈信息</h4>
+                                        <p class="mb-0">集思广益，广纳贤才。共收集 {{ feedbackList|length if feedbackList else 0 }} 条反馈信息。</p>
+                                    </div>
+                                    <div class="table-responsive table-desi">
+                                        <table class="basic-table table table-hover">
+                                            <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>姓名</th>
+                                                <th>邮箱</th>
+                                                <th>标题</th>
+                                                <th>内容</th>
+                                                <th>反馈时间</th>
+                                                <th>操作</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            {% if feedbackList %}
+                                            {% for fb in feedbackList %}
+                                            <tr>
+                                                <td>{{ fb.id }}</td>
+                                                <td>{{ fb.name }}</td>
+                                                <td>{{ fb.email }}</td>
+                                                <td>{{ fb.title }}</td>
+                                                <td>{{ fb.content }}</td>
+                                                <td>{{ fb.create_time.strftime('%Y-%m-%d %H:%M:%S') if fb.create_time else '' }}</td>
+                                                <td>
+                                                    <a onclick="deleteFeedback({{ fb.id }})" href="#"><span class="label text-success">删除</span></a>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                            {% endif %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

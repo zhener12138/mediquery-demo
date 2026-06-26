@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block body_class %}{% endblock %}
+{% block back %}{% include "common/back.html" %}{% endblock %}
+{% block content %}
+
+<div id="dashboard">
+    <div class="container">
+        <div class="dashboard-main">
+            <div class="row">
+                <div class="col-lg-3 col-md-12 col-sm-12 col-xs-12">
+                    {% with cur='medicine' %}{% include "common/sidebar.html" %}{% endwith %}
+                </div>
+                <div class="col-lg-9 col-md-12 col-sm-12 col-xs-12">
+                    <div class="dashboard-content">
+                        <div class="dashboard-form mb-4">
+                            <div class="row">
+                                <div class="col-lg-12 col-md-12 col-xs-12 padding-right-30">
+                                    <div class="dashboard-list">
+                                        <h4 class="gray">药品信息</h4>
+                                        <div class="dashboard-list-static">
+                                            <div class="edit-profile-photo">
+                                                <img id="img-preview" {% if medicine and medicine.img_path %}src="{{ medicine.img_path }}"{% else %}src="/static/assets/images/default-medicine.svg"{% endif %} alt="" onerror="this.onerror=null;this.src='/static/assets/images/default-medicine.svg'"/>
+                                                <div class="change-photo-btn">
+                                                    <div class="photoUpload">
+                                                        <span><i class="fa fa-upload"></i> 点击上传</span>
+                                                        <input id="img-file" type="file" class="upload" onchange="uploadPhoto()"/>
+                                                        <input style="display: none" id="img" value="{{ medicine.img_path if medicine else '' }}" type="text"/>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="my-profile">
+                                                <div class="form-group">
+                                                    <label>药品名称</label>
+                                                    <input id="medicineName" value="{{ medicine.medicine_name if medicine else '' }}" type="text"/>
+                                                    <input style="display: none" id="id" value="{{ medicine.id if medicine else '' }}" type="text"/>
+                                                </div>
+
+                                                <div class="form-group">
+                                                    <label>关键字搜索</label>
+                                                    <input id="keyword" type="text" value="{{ medicine.keyword if medicine else '' }}"/>
+                                                </div>
+
+                                                <div class="form-group">
+                                                    <label>品牌</label>
+                                                    <input id="medicineBrand" type="text" value="{{ medicine.medicine_brand if medicine else '' }}"/>
+                                                </div>
+
+                                                <div class="form-group">
+                                                    <label>价格</label>
+                                                    <input id="medicinePrice" type="text" value="{{ medicine.medicine_price if medicine else '' }}"/>
+                                                </div>
+
+                                                <div class="form-group">
+                                                    <label>主要的功效</label>
+                                                    <textarea id="medicineEffect" style="height: 100px">{{ medicine.medicine_effect if medicine else '' }}</textarea>
+                                                </div>
+
+                                                <div class="form-group">
+                                                    <label>相互作用</label>
+                                                    <textarea id="interaction" style="height: 100px">{{ medicine.interaction if medicine else '' }}</textarea>
+                                                </div>
+
+                                                <div class="form-group">
+                                                    <label>禁忌</label>
+                                                    <textarea id="taboo" style="height: 100px">{{ medicine.taboo if medicine else '' }}</textarea>
+                                                </div>
+
+                                                <div class="form-group">
+                                                    <label>用法用量</label>
+                                                    <textarea id="usAge" style="height: 100px">{{ medicine.us_age if medicine else '' }}</textarea>
+                                                </div>
+
+                                                {% if medicine and medicine.create_time %}
+                                                <div class="form-group">
+                                                    <label>关联疾病</label><br>
+                                                    {% if illnesses %}
+                                                    {% for ill in illnesses %}
+                                                    <span title="{{ ill.illness_symptom }}" style="margin: 5px">
+                                                        {% if ill.illnessMedicine %}
+                                                        <input value="{{ ill.id }}" type="checkbox" name="illness" checked onchange="deleteIllnessMedicine({{ ill.illnessMedicine.id }})">
+                                                        {% else %}
+                                                        <input value="{{ ill.id }}" type="checkbox" name="illness" onchange="saveIllnessMedicine({{ ill.id }}, {{ medicine.id }})">
+                                                        {% endif %}
+                                                        {{ ill.illness_name }}
+                                                    </span>
+                                                    {% endfor %}
+                                                    {% endif %}
+                                                </div>
+                                                {% endif %}
+
+                                                <div class="form-group">
+                                                    <label>药物类型</label>
+                                                    <select id="medicineType" class="niceSelect">
+                                                        <option value="0" {% if medicine and medicine.medicine_type == 0 %}selected{% endif %}>西药</option>
+                                                        <option value="1" {% if medicine and medicine.medicine_type == 1 %}selected{% endif %}>中药</option>
+                                                        <option value="2" {% if medicine and medicine.medicine_type == 2 %}selected{% endif %}>中成药</option>
+                                                    </select>
+                                                </div>
+
+                                                {% if medicine and medicine.create_time %}
+                                                <div class="form-group">
+                                                    <label>创建时间</label>
+                                                    <input style="background: #ecf0f1" disabled type="text" value="{{ medicine.create_time.strftime('%Y-%m-%d %H:%M:%S') }}"/>
+                                                </div>
+                                                {% endif %}
+
+                                                {% if medicine and medicine.update_time %}
+                                                <div class="form-group">
+                                                    <label>修改时间</label>
+                                                    <input style="background: #ecf0f1" disabled type="text" value="{{ medicine.update_time.strftime('%Y-%m-%d %H:%M:%S') }}"/>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                            <div>
+                                                <button class="btn btn-na" onclick="saveMedicine()">保存</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

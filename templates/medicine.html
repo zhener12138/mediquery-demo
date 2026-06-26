@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block body_class %}{% endblock %}
+{% block back %}{% include "common/back.html" %}{% endblock %}
+{% block content %}
+
+<section class="breadcrumb-wrap">
+    <div class="container">
+        <h2 class="cl-white mb-0">About Us</h2>
+    </div>
+    <div class="overlay"></div>
+</section>
+
+<section class="aboutus aboutus-3">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-5 col-md-12">
+                <div class="about-img position-relative">
+                    <img src="{{ medicine.img_path }}" class="" alt="" style="height:300px;width:100%" onerror="this.onerror=null;this.src='/static/assets/images/default-medicine.svg'">
+                </div>
+            </div>
+            <div class="col-lg-7 col-md-12 p-lg-4">
+                <div class="sc-title-one mb-3">
+                    <h4 class="cl-green">{{ medicine.medicine_price }}￥/盒</h4>
+                    <h2 class="mb-3">{{ medicine.medicine_name }}</h2>
+                    <h5>品牌方：{{ medicine.medicine_brand }}</h5>
+                </div>
+                <div class="about-detail">
+                    <h4>适应症：</h4>
+                    <p>{{ medicine.medicine_effect }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="w-process mt-5">
+            <div class="row">
+                <div class="col-lg-12 col-md-6">
+                    <div class="pcs-list p-4 border border-light-c bg-white">
+                        <i class="far fa-file-alt"></i>
+                        <h4>药的相互作用：</h4>
+                        <p class="cl-grey">{{ medicine.interaction or '暂无相关信息' }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="row" style="padding-top:20px">
+                <div class="col-lg-12 col-md-6">
+                    <div class="pcs-list p-4 border border-light-c bg-white">
+                        <i class="far fa-file-alt"></i>
+                        <h4>禁忌：</h4>
+                        <p class="cl-grey">{{ medicine.taboo or '暂无相关信息' }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="row" style="padding-top:20px">
+                <div class="col-lg-12 col-md-6">
+                    <div class="pcs-list p-4 border border-light-c bg-white">
+                        <i class="far fa-file-alt"></i>
+                        <h4>用法用量</h4>
+                        <p class="cl-grey">{{ medicine.us_age or '暂无相关信息' }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

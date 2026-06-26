@@ -1,0 +1,44 @@
+<div id="dashboard-sidebar" class="dashboard-sidebar">
+    <div class="profile-sec">
+        <div class="author-news mb-3">
+            <div class="author-news-content text-center p-3">
+                <div class="author-thumb mt-0">
+                    <img src="{{ loginUser.img_path if loginUser else '/static/assets/images/default-avatar.svg' }}" alt="author" onerror="this.onerror=null;this.src='/static/assets/images/default-avatar.svg'">
+                </div>
+                <div class="author-content pt-2 p-0">
+                    <h3 class="mb-1">{{ loginUser.user_name if loginUser else '' }}</h3>
+                    <p class="detail"><i class="fa fa-phone"></i> {{ loginUser.user_tel if loginUser else '' }}</p>
+                    <p class="detail"><i class="fa fa-envelope-o"></i> {{ loginUser.user_email if loginUser else '' }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <a href="#" class="dashboard-responsive-nav-trigger"><i class="fa fa-reorder"></i> Dashboard Navigation</a>
+    <div class="dashboard-nav">
+        <div class="dashboard-nav-inner">
+            <ul>
+                <li class="{{ 'active' if cur == 'profile' else '' }}">
+                    <a href="/profile"><i class="sl sl-icon-user"></i> 我的资料</a>
+                </li>
+                <li class="{{ 'active' if cur == 'doctor' else '' }}">
+                    <a href="/doctor"><i class="sl sl-icon-envelope-open"></i>智能医生</a>
+                </li>
+                {% if loginUser and loginUser.get('role_status') == 1 %}
+                <li class="{{ 'active' if cur == 'illness' else '' }}">
+                    <a href="/admin/illnesses"><i class="sl sl-icon-layers"></i> 疾病管理</a>
+                </li>
+                <li class="{{ 'active' if cur == 'medicine' else '' }}">
+                    <a href="/admin/medicines"><i class="sl sl-icon-layers"></i> 药品管理</a>
+                </li>
+                <li class="{{ 'active' if cur == 'feedback' else '' }}">
+                    <a href="/admin/feedbacks"><i class="sl sl-icon-layers"></i> 反馈管理</a>
+                </li>
+                {% endif %}
+                <li>
+                    <a href="/logout"><i class="sl sl-icon-power"></i> 退出登录</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>

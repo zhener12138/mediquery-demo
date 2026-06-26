@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block body_class %}{% endblock %}
+{% block back %}{% include "common/back.html" %}{% endblock %}
+{% block content %}
+
+<div id="dashboard">
+    <div class="container">
+        <div class="dashboard-main">
+            <div class="row">
+                <div class="col-lg-3 col-md-12 col-sm-12 col-xs-12">
+                    {% with cur='illness' %}{% include "common/sidebar.html" %}{% endwith %}
+                </div>
+                <div class="col-lg-9 col-md-12 col-sm-12 col-xs-12">
+                    <div class="dashboard-content">
+                        <div class="dashboard-form mb-4">
+                            <div class="row">
+                                <div class="col-lg-12 col-md-12 col-xs-12 padding-right-30">
+                                    <div class="dashboard-list">
+                                        <h4 class="gray">疾病信息</h4>
+                                        <div class="dashboard-list-static">
+                                            <div class="my-profile">
+                                                <div class="form-group">
+                                                    <label>疾病名称</label>
+                                                    <input id="illnessName" value="{{ illness.illness_name if illness else '' }}" type="text"/>
+                                                    <input style="display: none" id="id" value="{{ illness.id if illness else '' }}" type="text"/>
+                                                </div>
+
+                                                <div class="form-group">
+                                                    <label>引起的原因</label>
+                                                    <input id="includeReason" type="text" value="{{ illness.include_reason if illness else '' }}"/>
+                                                </div>
+
+                                                <div class="form-group">
+                                                    <label>主要的症状</label>
+                                                    <textarea id="illnessSymptom" style="height: 100px">{{ illness.illness_symptom if illness else '' }}</textarea>
+                                                </div>
+
+                                                <div class="form-group">
+                                                    <label>特殊的症状</label>
+                                                    <textarea id="specialSymptom" style="height: 100px">{{ illness.special_symptom if illness else '' }}</textarea>
+                                                </div>
+
+                                                <div class="form-group">
+                                                    <label>疾病分类</label>
+                                                    <select id="kindId" class="niceSelect">
+                                                        {% if kinds %}
+                                                        {% for kind in kinds %}
+                                                        <option value="{{ kind.id }}" {% if illness and illness.kind_id == kind.id %}selected{% endif %}>{{ kind.name }}</option>
+                                                        {% endfor %}
+                                                        {% endif %}
+                                                    </select>
+                                                </div>
+
+                                                {% if illness and illness.create_time %}
+                                                <div class="form-group">
+                                                    <label>创建时间</label>
+                                                    <input style="background: #ecf0f1" disabled type="text" value="{{ illness.create_time.strftime('%Y-%m-%d %H:%M:%S') }}"/>
+                                                </div>
+                                                {% endif %}
+
+                                                {% if illness and illness.update_time %}
+                                                <div class="form-group">
+                                                    <label>修改时间</label>
+                                                    <input style="background: #ecf0f1" disabled type="text" value="{{ illness.update_time.strftime('%Y-%m-%d %H:%M:%S') }}"/>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                            <div>
+                                                <button class="btn btn-na" onclick="saveIllness()">保存</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
