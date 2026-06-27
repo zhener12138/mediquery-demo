@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, Form, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_admin
 from app.schemas.common import RespResult
 from app.services.medicine_service import MedicineService
 
@@ -23,6 +24,7 @@ async def save_medicine(
     imgPath: str = Form(""),
     medicinePrice: float = Form(None),
     db: Session = Depends(get_db),
+    _admin = Depends(get_current_admin),
 ):
     from app.models.medicine import Medicine
 
@@ -53,6 +55,7 @@ async def delete_medicine(
     request: Request,
     id: int = Form(...),
     db: Session = Depends(get_db),
+    _admin = Depends(get_current_admin),
 ):
     medicine_service = MedicineService(db)
     result = medicine_service.delete(id)

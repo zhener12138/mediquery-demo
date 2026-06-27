@@ -4,11 +4,12 @@ from fastapi import APIRouter, Request, Form, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.config import settings
 from app.schemas.common import RespResult
 from app.services.user_service import UserService
 from app.services.email_service import EmailService
 from app.models.user import User
-from app.utils.helpers import not_empty, is_empty
+from app.utils.helpers import not_empty, is_empty, hash_password, verify_password, create_access_token, build_session_user
 
 router = APIRouter(prefix="/api/login", tags=["auth"])
 
@@ -47,28 +48,19 @@ async def register(
     user = User(
         user_account=userAccount,
         user_name=userName,
-        user_pwd=userPwd,
+        user_pwd=hash_password(userPwd),
         user_email=userEmail,
         role_status=0,
-        img_path="https://moti-cloud-v2.oss-cn-beijing.aliyuncs.com/Snipaste_2022-05-01_15-37-01.png",
+        img_path=settings.default_avatar_url,
     )
     user = user_service.save(user)
-    request.session["loginUser"] = {
-        "id": user.id,
-        "user_name": user.user_name,
-        "user_account": user.user_account,
-        "user_pwd": user.user_pwd,
-        "user_email": user.user_email,
-        "role_status": user.role_status,
-        "img_path": user.img_path,
-        "user_age": user.user_age,
-        "user_sex": user.user_sex,
-        "user_tel": user.user_tel,
-    }
+    request.session["loginUser"] = build_session_user(user)
+    token = create_access_token(user.id, user.user_name, user.role_status)
     return RespResult.success("注册成功", data={
         "id": user.id,
         "user_name": user.user_name,
         "user_account": user.user_account,
+        "token": token,
     })
 
 
@@ -85,22 +77,12 @@ async def login(
         return RespResult.fail("账户尚未注册")
 
     user = users[0]
-    if user.user_pwd != userPwd:
+    if not verify_password(userPwd, user.user_pwd):
         return RespResult.fail("密码错误")
 
-    request.session["loginUser"] = {
-        "id": user.id,
-        "user_name": user.user_name,
-        "user_account": user.user_account,
-        "user_pwd": user.user_pwd,
-        "user_email": user.user_email,
-        "role_status": user.role_status,
-        "img_path": user.img_path,
-        "user_age": user.user_age,
-        "user_sex": user.user_sex,
-        "user_tel": user.user_tel,
-    }
-    return RespResult.success("登录成功")
+    request.session["loginUser"] = build_session_user(user)
+    token = create_access_token(user.id, user.user_name, user.role_status)
+    return RespResult.success("登录成功", data={"token": token})
 
 
 @router.post("/send-email-code")

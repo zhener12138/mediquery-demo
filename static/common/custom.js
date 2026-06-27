@@ -1,4 +1,34 @@
 /**
+ * JWT Token Management
+ */
+function getToken() {
+    return localStorage.getItem('access_token');
+}
+
+function setToken(token) {
+    localStorage.setItem('access_token', token);
+}
+
+function clearToken() {
+    localStorage.removeItem('access_token');
+}
+
+// Attach JWT token to every AJAX request
+$.ajaxSetup({
+    beforeSend: function(xhr) {
+        var token = getToken();
+        if (token) {
+            xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+        }
+    }
+});
+
+// Clear token on logout
+$(document).on('click', 'a[href="/logout"]', function() {
+    clearToken();
+});
+
+/**
  * 发送验证码
  */
 function sendEmailCode() {
@@ -63,6 +93,7 @@ function register() {
         success: function (data) {
             layer.msg(data['message']);
             if (data['code'] === 'SUCCESS') {
+                setToken(data['data']['token']);
                 setTimeout('reload()', 2000);
             }
         }
@@ -91,6 +122,7 @@ function login() {
         success: function (data) {
             layer.msg(data['message']);
             if (data['code'] === 'SUCCESS') {
+                setToken(data['data']['token']);
                 setTimeout('reload()', 2000);
             }
         }

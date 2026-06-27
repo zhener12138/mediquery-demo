@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     oss_access_key: str = ""
     oss_access_secret: str = ""
 
+    # JWT
+    jwt_secret: str = "change-me"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440  # 24 hours
+
+    # Default avatar
+    default_avatar_url: str = "/static/assets/images/default-avatar.svg"
+
     # App
     secret_key: str = "change-me"
     debug: bool = False

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, Form, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_admin
 from app.schemas.common import RespResult
 from app.services.feedback_service import FeedbackService
 from app.models.feedback import Feedback
@@ -29,6 +30,7 @@ async def delete_feedback(
     request: Request,
     id: int = Form(...),
     db: Session = Depends(get_db),
+    _admin = Depends(get_current_admin),
 ):
     feedback_service = FeedbackService(db)
     result = feedback_service.delete(id)

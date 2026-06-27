@@ -30,8 +30,11 @@ aiosmtplib==3.0.2
 # Alibaba Cloud OSS
 oss2==2.19.1
 
-# Utilities
-python-dateutil==2.9.0
+# Auth
+python-jose[cryptography]==3.3.0
 itsdangerous==2.2.0
 passlib==1.7.4
 bcrypt==4.2.1
+
+# Utilities
+python-dateutil==2.9.0

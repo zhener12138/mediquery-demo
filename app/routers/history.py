@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, Form, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_admin
 from app.schemas.common import RespResult
 from app.services.history_service import HistoryService
 
@@ -16,6 +17,7 @@ async def save_history(
     keyword: str = Form(""),
     operateType: int = Form(None),
     db: Session = Depends(get_db),
+    _admin = Depends(get_current_admin),
 ):
     from app.models.history import History
 
@@ -37,6 +39,7 @@ async def delete_history(
     request: Request,
     id: int = Form(...),
     db: Session = Depends(get_db),
+    _admin = Depends(get_current_admin),
 ):
     history_service = HistoryService(db)
     result = history_service.delete(id)

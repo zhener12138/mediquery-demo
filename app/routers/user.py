@@ -2,9 +2,10 @@ from fastapi import APIRouter, Request, Form, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.schemas.common import RespResult
 from app.services.user_service import UserService
-from app.utils.helpers import not_empty, is_empty
+from app.utils.helpers import not_empty, is_empty, verify_password, hash_password, build_session_user
 
 router = APIRouter(prefix="/api/user", tags=["user"])
 
@@ -19,15 +20,10 @@ async def save_profile(
     userEmail: str = Form(""),
     userTel: str = Form(""),
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
-    user_data = request.session.get("loginUser")
-    if not user_data:
-        return RespResult.fail("请先登录")
-
     user_service = UserService(db)
-    user = user_service.get(user_data["id"])
-    if not user:
-        return RespResult.fail("用户不存在")
+    user = current_user
 
     if not_empty(userAccount):
         user.user_account = userAccount
@@ -43,18 +39,7 @@ async def save_profile(
         user.user_tel = userTel
 
     user = user_service.save(user)
-    request.session["loginUser"] = {
-        "id": user.id,
-        "user_name": user.user_name,
-        "user_account": user.user_account,
-        "user_pwd": user.user_pwd,
-        "user_email": user.user_email,
-        "role_status": user.role_status,
-        "img_path": user.img_path,
-        "user_age": user.user_age,
-        "user_sex": user.user_sex,
-        "user_tel": user.user_tel,
-    }
+    request.session["loginUser"] = build_session_user(user)
     return RespResult.success("保存成功")
 
 
@@ -64,20 +49,14 @@ async def save_password(
     oldPass: str = Form(""),
     newPass: str = Form(""),
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
-    user_data = request.session.get("loginUser")
-    if not user_data:
-        return RespResult.fail("请先登录")
-
     user_service = UserService(db)
-    user = user_service.get(user_data["id"])
-    if not user:
-        return RespResult.fail("用户不存在")
+    user = current_user
 
-    if user.user_pwd != oldPass:
+    if not verify_password(oldPass, user.user_pwd):
         return RespResult.fail("旧密码错误")
 
-    user.user_pwd = newPass
-    user = user_service.save(user)
-    request.session["loginUser"]["user_pwd"] = user.user_pwd
+    user.user_pwd = hash_password(newPass)
+    user_service.save(user)
     return RespResult.success("保存成功")

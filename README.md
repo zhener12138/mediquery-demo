@@ -148,10 +148,32 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 | POST | `/api/file/upload` | 上传图片到 OSS |
 | GET | `/admin/*` | 管理后台页面 |
 
+## 安全注意事项
+
+### 密钥轮换
+
+如果你曾将包含真实凭证的 `.env` 文件推送到了远程仓库（包括已删除的提交），请立即前往以下控制台轮换密钥：
+
+| 服务 | 控制台 | 需轮换的凭证 |
+|------|--------|-------------|
+| DashScope (通义千问) | [dashscope.console.aliyun.com](https://dashscope.console.aliyun.com) | API Key |
+| 阿里云 RAM (OSS) | [ram.console.aliyun.com](https://ram.console.aliyun.com) | AccessKey + AccessSecret |
+| QQ 邮箱 SMTP | [mail.qq.com](https://mail.qq.com) → 设置 → 账户 → POP3/SMTP | 授权码 |
+
+### 密码存储
+
+用户密码使用 **bcrypt** 哈希存储，不可逆。即使数据库泄露，攻击者也无法获取明文密码。
+
+### JWT 认证
+
+- 管理 API (疾病/药品/反馈/文件 的增删改) 需要管理员 JWT token
+- Token 有效期 24 小时，登录/注册时签发
+- 前端通过 `Authorization: Bearer <token>` 头传递
+
 ## 部署注意事项
 
 1. `.env` 文件**切勿提交到 Git**，已加入 `.gitignore`
-2. 生产环境请将 `DEBUG` 设为 `false`，并使用强随机 `SECRET_KEY`
+2. 生产环境请将 `DEBUG` 设为 `false`，并设置强随机 `SECRET_KEY` 和 `JWT_SECRET`
 3. 邮件密码建议使用 QQ 邮箱的 SMTP 授权码（非登录密码）
 4. OSS Bucket 建议设置访问权限和防盗链
 5. DashScope API Key 可在[阿里云灵积控制台](https://dashscope.console.aliyun.com/)免费申请
