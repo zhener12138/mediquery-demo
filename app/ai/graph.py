@@ -7,6 +7,7 @@ from langchain_core.messages import BaseMessage
 
 from app.ai.llm import build_llm
 from app.ai.prompts import REFUSAL_RESPONSE, FALLBACK_RESPONSE
+from app.ai.retriever import retrieve
 
 
 class DoctorState(TypedDict):
@@ -36,15 +37,29 @@ def handle_non_medical_node(state: DoctorState) -> dict:
 
 
 def generate_response_node(state: DoctorState) -> dict:
-    """Generate the medical doctor response with conversation history."""
+    """Generate the medical doctor response with RAG context."""
     try:
         llm = build_llm(temperature=0.7)
+        user_input = state['user_input']
 
-        response = llm.invoke(
-            f"你是甄同学开发的智能医生，你只回答与医疗相关的问题。\n"
-            f"用户问题：{state['user_input']}\n"
-            f"请用中文回答，简洁专业。"
-        ).content
+        # Retrieve relevant knowledge
+        retrieved_docs = retrieve(user_input)
+        if retrieved_docs:
+            context = "\n\n".join(f"- {doc}" for doc in retrieved_docs)
+            prompt = (
+                f"你是甄同学开发的智能医生。请结合以下医学知识库回答用户问题。\n\n"
+                f"相关知识：\n{context}\n\n"
+                f"用户问题：{user_input}\n"
+                f"请用中文回答，简洁专业。如果知识库中没有相关信息，请基于你的医学知识回答。"
+            )
+        else:
+            prompt = (
+                f"你是甄同学开发的智能医生，你只回答与医疗相关的问题。\n"
+                f"用户问题：{user_input}\n"
+                f"请用中文回答，简洁专业。"
+            )
+
+        response = llm.invoke(prompt).content
     except Exception:
         response = FALLBACK_RESPONSE
 
@@ -106,13 +121,23 @@ async def get_doctor_response_stream(user_input: str, session_id: str) -> AsyncG
         yield REFUSAL_RESPONSE
         return
 
-    # Step 2: stream the medical response
+    # Step 2: stream the medical response with RAG
     llm = build_llm(temperature=0.7)
-    prompt = (
-        f"你是甄同学开发的智能医生，你只回答与医疗相关的问题。\n"
-        f"用户问题：{user_input}\n"
-        f"请用中文回答，简洁专业。"
-    )
+    retrieved_docs = retrieve(user_input)
+    if retrieved_docs:
+        context = "\n\n".join(f"- {doc}" for doc in retrieved_docs)
+        prompt = (
+            f"你是甄同学开发的智能医生。请结合以下医学知识库回答用户问题。\n\n"
+            f"相关知识：\n{context}\n\n"
+            f"用户问题：{user_input}\n"
+            f"请用中文回答，简洁专业。如果知识库中没有相关信息，请基于你的医学知识回答。"
+        )
+    else:
+        prompt = (
+            f"你是甄同学开发的智能医生，你只回答与医疗相关的问题。\n"
+            f"用户问题：{user_input}\n"
+            f"请用中文回答，简洁专业。"
+        )
     try:
         async for chunk in llm.astream(prompt):
             if chunk.content:

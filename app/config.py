@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440  # 24 hours
 
+    # RAG
+    embedding_model: str = "text-embedding-v2"
+    rag_top_k: int = 5
+
     # Default avatar
     default_avatar_url: str = "/static/assets/images/default-avatar.svg"
 

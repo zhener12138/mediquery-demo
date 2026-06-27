@@ -2,10 +2,28 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 from app.config import settings
+from app.database import SessionLocal
 
-app = FastAPI(title="智慧医药系统")
+
+async def build_rag_index():
+    from app.ai.retriever import index_all
+    db = SessionLocal()
+    try:
+        index_all(db)
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await build_rag_index()
+    yield
+
+
+app = FastAPI(title="智慧医药系统", lifespan=lifespan)
 
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 

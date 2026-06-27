@@ -36,5 +36,8 @@ itsdangerous==2.2.0
 passlib==1.7.4
 bcrypt==4.2.1
 
+# RAG
+faiss-cpu==1.14.3
+
 # Utilities
 python-dateutil==2.9.0
