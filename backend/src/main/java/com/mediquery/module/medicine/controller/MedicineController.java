@@ -47,8 +47,4 @@ public class MedicineController {
     @Operation(summary = "删除药品")
     @DeleteMapping("/{id}") @PreAuthorize("hasRole('ADMIN')")
     public Result<?> delete(@PathVariable Integer id) { medicineService.delete(id); return Result.success(); }
-
-    @Operation(summary = "关联药品与疾病")
-    @PutMapping("/{id}/illnesses") @PreAuthorize("hasRole('ADMIN')")
-    public Result<?> linkIllnesses(@PathVariable Integer id, @RequestBody java.util.List<Integer> illnessIds) { return Result.success(); }
 }

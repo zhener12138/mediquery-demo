@@ -26,6 +26,14 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+        // SSE 流式转发：避免代理缓冲 event-stream 响应
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+              res.flushHeaders()
+            }
+          })
+        },
       }
     }
   }

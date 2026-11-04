@@ -10,8 +10,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -43,31 +41,6 @@ public class AiDoctorService {
     }
 
     /**
-     * RAG + 多轮对话：
-     * 1. 存用户消息
-     * 2. 查当前 session 历史（最近20条）
-     * 3. 检索疾病/药品知识
-     * 4. 调千问（带历史+知识上下文）
-     * 5. 缓存知识上下文到 Redis
-     * 6. 存 AI 回复
-     */
-    public String chat(Integer userId, String sessionId, String message) {
-        saveRecord(userId, sessionId, "user", message);
-
-        // 获取当前 session 的对话历史
-        var history = getSessionHistory(userId, sessionId);
-
-        // 检索知识库
-        var knowledge = knowledgeService.retrieve(message);
-
-        // 调用大模型（带历史对话 + 知识上下文）
-        var reply = dashScopeClient.chatWithHistory(sessionId, message, history, knowledge);
-
-        saveRecord(userId, sessionId, "assistant", reply);
-        return reply;
-    }
-
-    /**
      * 获取同一 session 的最近 20 条对话历史，按时间正序排列。
      */
     private List<AiChatRecord> getSessionHistory(Integer userId, String sessionId) {
@@ -87,6 +60,10 @@ public class AiDoctorService {
         new Thread(() -> {
             SecurityContextHolder.setContext(secCtx);  // 传递到子线程
             try {
+                // 立即发送 start 事件，提交 HTTP 响应头，防止异步分发时安全过滤器二次拦截
+                emitter.send(SseEmitter.event().name("delta").data(
+                        objectMapper.writeValueAsString(Map.of("type", "start", "sessionId", sid))));
+
                 var history = getSessionHistory(userId, sid);
                 var knowledge = knowledgeService.retrieve(message);
                 var reply = dashScopeClient.chatWithHistory(sid, message, history, knowledge);
@@ -107,13 +84,6 @@ public class AiDoctorService {
             }
         }).start();
         return emitter;
-    }
-
-    public List<AiChatRecord> getHistory(Integer userId) {
-        return chatRecordMapper.selectList(new LambdaQueryWrapper<AiChatRecord>()
-                .eq(AiChatRecord::getUserId, userId)
-                .orderByDesc(AiChatRecord::getCreateTime)
-                .last("LIMIT 50"));
     }
 
     private void saveRecord(Integer userId, String sessionId, String role, String content) {

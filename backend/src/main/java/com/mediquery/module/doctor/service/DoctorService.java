@@ -9,8 +9,6 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.List;
-
 /**
  * 医生信息服务：按科室/关键词搜索、sortOrder排序、详情缓存
  */
@@ -37,11 +35,6 @@ public class DoctorService {
     // 获取详情（Redis缓存）
     @Cacheable(value = "doctor", key = "#id")
     public Doctor getById(Integer id) { return doctorMapper.selectById(id); }
-
-    // 查询所有在岗医生（用于前端下拉筛选）
-    public List<Doctor> listAll() {
-        return doctorMapper.selectList(new LambdaQueryWrapper<Doctor>().eq(Doctor::getStatus, 1).orderByAsc(Doctor::getSortOrder));
-    }
 
     // 新增医生（默认在岗）
     public Doctor save(Doctor doctor) { doctor.setStatus(1); doctorMapper.insert(doctor); return doctor; }

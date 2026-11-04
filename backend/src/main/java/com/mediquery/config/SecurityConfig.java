@@ -47,7 +47,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/files/upload").authenticated()
                 .requestMatchers("/api/v1/feedbacks").authenticated()
                 // Swagger/Knife4j
-                .requestMatchers("/doc.html", "/swagger-ui/**", "/v3/api-docs/**", "/webjars/**").permitAll()
+                .requestMatchers("/doc.html", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/webjars/**", "/swagger-resources/**").permitAll()
                 // Admin only
                 .requestMatchers(HttpMethod.POST, "/api/v1/illnesses/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/api/v1/illnesses/**").hasRole("ADMIN")

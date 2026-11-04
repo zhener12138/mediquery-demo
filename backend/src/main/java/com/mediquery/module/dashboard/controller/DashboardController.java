@@ -67,11 +67,4 @@ public class DashboardController {
         for (var i : illnesses) result.add(Map.of("name", i.getName(), "viewCount", i.getViewCount()));
         return Result.success(result);
     }
-
-    // 分类统计（待实现）
-    @Operation(summary = "分类统计")
-    @GetMapping("/category-stats")
-    public Result<List<Map<String, Object>>> categoryStats() {
-        return Result.success(List.of());
-    }
 }

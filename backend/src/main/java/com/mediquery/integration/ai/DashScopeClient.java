@@ -42,11 +42,6 @@ public class DashScopeClient {
         this.redisTemplate = redisTemplate;
     }
 
-    /** 简单对话（无历史，无上下文） */
-    public String chat(String userMessage) {
-        return doChat(List.of(), userMessage, "");
-    }
-
     /**
      * 带历史的多轮 RAG 对话。
      * @param sessionId 会话ID

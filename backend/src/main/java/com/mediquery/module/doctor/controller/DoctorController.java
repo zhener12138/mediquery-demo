@@ -9,8 +9,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 /**
  * 医生管理控制器：公开浏览 + 管理员维护(增删改)
  */
@@ -30,9 +28,6 @@ public class DoctorController {
             @RequestParam(defaultValue = "9") int size) {
         return Result.success(doctorService.search(keyword, department, page, size));
     }
-
-    @Operation(summary = "获取所有在岗医生")
-    @GetMapping("/all") public Result<List<Doctor>> all() { return Result.success(doctorService.listAll()); }
 
     @Operation(summary = "获取医生详情")
     @GetMapping("/{id}")
