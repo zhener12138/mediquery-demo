@@ -149,8 +149,12 @@ onMounted(() => { messages.value.push({ role: 'assistant', content: '您好！�
 .chat-messages { flex: 1; overflow-y: auto; padding: 24px; }
 .message { display: flex; gap: 12px; margin-bottom: 20px; }
 .message.user { flex-direction: row-reverse; }
-.msg-content { background: var(--primary); color: #fff; }
-.message.assistant .msg-content { background: #f4f4f5; }
+.message.user .msg-content { background: var(--primary); color: #fff; }
+.message.assistant .msg-content {
+  background: #f4f4f5;
+  color: var(--text);
+  border: 1px solid #e4e7ed;
+}
 .msg-content { padding: 12px 16px; border-radius: 12px; max-width: 70%; line-height: 1.6; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
 .chat-input { padding: 16px 24px; border-top: 1px solid #ebeef5; }
 .typing span { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #909399; margin: 0 2px; animation: typing 1.4s infinite both; }
@@ -159,8 +163,8 @@ onMounted(() => { messages.value.push({ role: 'assistant', content: '您好！�
 @keyframes typing { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
 .msg-error {
   background: #fef0f0 !important;
-  color: #f56c6c !important;
-  border: 1px solid #fde2e2;
+  color: #a83232 !important;
+  border: 1px solid #fde2e2 !important;
 }
 .msg-error .el-button { margin-left: 8px; }
 </style>
