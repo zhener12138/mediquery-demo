@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext .vue,.ts"
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "size": "node -e \"const fs=require('fs');const d='dist/assets';let t=0;for(const f of fs.readdirSync(d)){const s=fs.statSync(d+'/'+f).size;if(f.endsWith('.js')||f.endsWith('.css')){t+=s;console.log((s/1024).toFixed(0).padStart(6)+' KB  '+f)}}console.log('------ total: '+(t/1024).toFixed(0)+' KB')\""
   },
   "dependencies": {
     "vue": "^3.5.13",

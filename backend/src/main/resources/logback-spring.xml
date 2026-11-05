@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  logback 配置。
+
+  为什么要有这个文件：之前用 Spring Boot 默认配置 + application.yml 里的
+  `logging.level.com.mediquery: debug`，结果所有日志只往控制台吐，
+  容器里跑起来后日志跟着容器一起没了，出事只能靠猜。
+
+  三件事：
+  1. 每行日志都带 traceId（由 TraceIdFilter 放进 MDC），这样用户报的错
+     能和日志里的某一条对上。
+  2. 按天 + 按大小滚动，保留 30 天，总量封顶 1GB，不会把磁盘写满。
+  3. 测试 profile 只往控制台打 WARN，不给 CI 刷屏。
+
+  注意：这里的 pattern 和 TraceIdFilter 的常量要一致。改键名要两边一起改，
+  只改一边的表现是日志里出现 %X{traceId} 原样字符串或者空串，很容易漏看。
+-->
+<configuration>
+
+    <!-- 从 application.yml 拿路径和级别，避免两处硬编码 -->
+    <springProperty scope="context" name="LOG_DIR" source="logging.file.path" defaultValue="logs"/>
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="mediquery"/>
+
+    <!--
+      控制台 pattern。
+      %X{traceId} 取自 MDC；过滤器没跑（比如启动阶段）时是空的，
+      `%X{traceId:-}` 的 `:-` 表示"没有就给空字符串"，避免打出 "traceId_IS_UNDEFINED"。
+    -->
+    <property name="CONSOLE_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%thread] [%X{traceId:-}] %cyan(%logger{40}) - %msg%n"/>
+
+    <!-- 文件里不要 ANSI 颜色码，否则 grep 出来全是转义字符 -->
+    <property name="FILE_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{traceId:-}] %logger{40} - %msg%n"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/${APP_NAME}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/${APP_NAME}-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${FILE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 错误单独一份，排查时不用在几万行 INFO 里翻 -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/${APP_NAME}-error.log</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/${APP_NAME}-error-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>20MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>200MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${FILE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 测试：只打 WARN 到控制台。CI 日志要能一眼看完，不是给人翻的 -->
+    <springProfile name="test">
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+        <logger name="com.mediquery" level="WARN"/>
+    </springProfile>
+
+    <!-- 其它（本地开发 / 生产）：控制台 + 文件 -->
+    <springProfile name="!test">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </root>
+        <!-- 业务包开 DEBUG：目前是排查阶段，量也不大。上线稳定后降到 INFO -->
+        <logger name="com.mediquery" level="DEBUG"/>
+        <!--
+          MyBatis 的 SQL 走 slf4j 而不是 StdOutImpl（见 application.yml），
+          这样 SQL 也会带 traceId，才能把"哪条 SQL 慢了/错了"和请求对上。
+        -->
+        <logger name="com.mediquery.module" level="DEBUG"/>
+    </springProfile>
+
+</configuration>

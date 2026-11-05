@@ -29,7 +29,20 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, nextTick } from 'vue'
-import * as echarts from 'echarts'
+// 按需引入，不再是 import * as echarts from 'echarts'。
+//
+// 原来那行让 echarts 整包进构建产物——实测 DashboardPage 的 chunk 高达 1014KB，
+// 其中绝大部分是项目里从来没调用过的图表类型（地图、3D、关系图、雷达……）。
+// 这里只引真正用到的：柱状图 + 三个组件 + Canvas 渲染器。
+//
+// 代价：以后要用新图表必须手动往 echarts.use([...]) 里加一行，否则图表静默不显示。
+// 这是有意的取舍——默认全量引进来的体积只会涨不会降。
+import * as echarts from 'echarts/core'
+import { BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, TitleComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+echarts.use([BarChart, GridComponent, TooltipComponent, TitleComponent, CanvasRenderer])
 import api from '@/api'
 
 const stats = reactive([

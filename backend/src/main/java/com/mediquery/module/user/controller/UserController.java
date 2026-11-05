@@ -5,6 +5,7 @@ import com.mediquery.common.dto.Result;
 import com.mediquery.integration.oss.OssClient;
 import com.mediquery.module.user.entity.User;
 import com.mediquery.module.user.mapper.UserMapper;
+import com.mediquery.module.user.vo.UserVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,16 +35,14 @@ public class UserController {
 
     @Operation(summary = "获取当前用户信息")
     @GetMapping("/user/me")
-    public Result<User> me(@RequestAttribute(required = false) Integer userId) {
+    public Result<UserVO> me(@RequestAttribute(required = false) Integer userId) {
         if (userId == null) throw BusinessException.unauthorized("请先登录");
-        var user = userMapper.selectById(userId);
-        if (user != null) user.setPassword(null);
-        return Result.success(user);
+        return Result.success(UserVO.from(userMapper.selectById(userId)));
     }
 
     @Operation(summary = "更新个人资料")
     @PutMapping("/user/profile")
-    public Result<User> updateProfile(@RequestAttribute(required = false) Integer userId, @RequestBody User updates) {
+    public Result<UserVO> updateProfile(@RequestAttribute(required = false) Integer userId, @RequestBody User updates) {
         if (userId == null) throw BusinessException.unauthorized("请先登录");
         var user = userMapper.selectById(userId);
         if (user == null) throw BusinessException.notFound("用户不存在");
@@ -52,9 +51,11 @@ public class UserController {
         if (updates.getSex() != null) user.setSex(updates.getSex());
         if (updates.getPhone() != null) user.setPhone(updates.getPhone());
         if (updates.getEmail() != null) user.setEmail(updates.getEmail());
+        // 头像走 upload 拿到 OSS 地址后再回填。之前漏了这个字段，
+        // 结果前端上传成功了、地址也拿到了，但保存时被静默丢弃，刷新就变回旧头像。
+        if (updates.getAvatarUrl() != null) user.setAvatarUrl(updates.getAvatarUrl());
         userMapper.updateById(user);
-        user.setPassword(null);
-        return Result.success(user);
+        return Result.success(UserVO.from(user));
     }
 
     @Operation(summary = "修改密码")
@@ -76,10 +77,9 @@ public class UserController {
     @Operation(summary = "用户列表(管理员)")
     @GetMapping("/admin/users")
     @PreAuthorize("hasRole('ADMIN')")
-    public Result<java.util.List<User>> listUsers() {
+    public Result<java.util.List<UserVO>> listUsers() {
         var users = userMapper.selectList(null);
-        users.forEach(u -> u.setPassword(null));
-        return Result.success(users);
+        return Result.success(users.stream().map(UserVO::from).toList());
     }
 
     @Operation(summary = "启用/禁用用户")

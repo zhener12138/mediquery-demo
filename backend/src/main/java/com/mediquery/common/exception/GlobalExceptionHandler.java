@@ -1,9 +1,11 @@
 package com.mediquery.common.exception;
 
 import com.mediquery.common.dto.Result;
+import com.mediquery.common.web.TraceIdFilter;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -119,7 +121,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Result<?> handleException(Exception e) {
+        // 完整堆栈进日志，里面带着 MDC 的 traceId（见 TraceIdFilter）
         log.error("系统异常", e);
-        return Result.error("服务器内部错误");
+        // 回给用户的消息里带上同一个编号：用户报障时截图这一句，
+        // 你就能直接 grep 日志找到那一条，而不是在一堆「系统异常」里猜。
+        String traceId = MDC.get(TraceIdFilter.TRACE_ID);
+        String message = traceId == null
+                ? "服务器内部错误"
+                : "服务器内部错误，错误编号 " + traceId;
+        return Result.error(message);
     }
 }

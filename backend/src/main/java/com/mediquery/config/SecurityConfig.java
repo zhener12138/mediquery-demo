@@ -18,6 +18,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.http.MediaType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -33,9 +34,12 @@ import java.nio.charset.StandardCharsets;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final CorsConfigurationSource corsConfigurationSource;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+                          CorsConfigurationSource corsConfigurationSource) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.corsConfigurationSource = corsConfigurationSource;
     }
 
     @Bean
@@ -43,6 +47,11 @@ public class SecurityConfig {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // CORS 必须挂在 Security 链上，不能只注册一个 CorsFilter Bean。
+            // Bean 的 order 是 LOWEST_PRECEDENCE，排在 springSecurityFilterChain(-100) 之后，
+            // 预检请求会先被 Security 判成未认证返回 401，浏览器看到的就是"跨域失败"。
+            // 挂在这里，CorsFilter 会被插到 Security 链最前面，OPTIONS 预检不进 authorization 直接 200。
+            .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .authorizeHttpRequests(auth -> auth
                 // Allow async dispatches (SSE streaming) to bypass re-authorization
                 .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
@@ -51,6 +60,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/illnesses/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/medicines/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/doctors/**").permitAll()
+                // 首页那几个公开计数，不含任何后台数据
+                .requestMatchers(HttpMethod.GET, "/api/v1/stats").permitAll()
                 .requestMatchers("/api/v1/files/upload").authenticated()
                 .requestMatchers("/api/v1/feedbacks").authenticated()
                 // Swagger/Knife4j

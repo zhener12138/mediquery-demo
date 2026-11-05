@@ -7,10 +7,12 @@
         <el-input v-model="keyword" placeholder="搜索疾病名称、症状、药品..." size="large" @keyup.enter="search" :prefix-icon="Search" />
         <el-button type="primary" size="large" @click="search">搜索一下</el-button>
       </div>
+      <!-- 数字全部来自 /stats 真实计数。取不到就显示「—」，
+           不写死任何数字——之前这里写的是「1000+ 药品信息」，而库里实际只有 7 条。 -->
       <div class="hero-stats">
-        <div class="stat-item"><strong>10+</strong><span>疾病分类</span></div>
-        <div class="stat-item"><strong>1000+</strong><span>药品信息</span></div>
-        <div class="stat-item"><strong>7x24</strong><span>AI智能医生</span></div>
+        <div class="stat-item"><strong>{{ display(stats.illnessCount) }}</strong><span>疾病收录</span></div>
+        <div class="stat-item"><strong>{{ display(stats.medicineCount) }}</strong><span>药品收录</span></div>
+        <div class="stat-item"><strong>{{ display(stats.doctorCount) }}</strong><span>医生团队</span></div>
       </div>
     </section>
 
@@ -44,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search, FirstAidKit, ChatDotRound, UserFilled } from '@element-plus/icons-vue'
 import api from '@/api'
@@ -52,6 +54,17 @@ import api from '@/api'
 const router = useRouter()
 const keyword = ref('')
 const popularIllnesses = ref<any[]>([])
+const stats = reactive<{ illnessCount?: number; medicineCount?: number; doctorCount?: number }>({})
+
+/**
+ * 计数还没回来、或者接口挂了，就显示破折号。
+ *
+ * <p>不显示 0：0 是「查到了，一条都没有」，和「还没查到」是两件事，
+ * 混在一起用户会以为系统是空的。
+ */
+function display(v?: number) {
+  return typeof v === 'number' ? v : '—'
+}
 
 const cards = [
   { title: '疾病百科', desc: '全面的疾病信息库，按科室分类浏览，了解病因症状', icon: FirstAidKit, color: '#409eff', link: '/illnesses' },
@@ -66,10 +79,20 @@ function search() {
 }
 
 onMounted(async () => {
-  try {
-    const res = await api.get('/illnesses', { params: { page: 1, size: 6 } })
-    popularIllnesses.value = res.data?.records || []
-  } catch (e) {}
+  // 两个请求互不依赖，失败了各自兜住，一个挂了不影响另一个渲染
+  const [illnesses, counters] = await Promise.allSettled([
+    api.get('/illnesses', { params: { page: 1, size: 6 } }),
+    api.get('/stats'),
+  ])
+  if (illnesses.status === 'fulfilled') {
+    popularIllnesses.value = (illnesses.value as any).data?.records || []
+  }
+  if (counters.status === 'fulfilled') {
+    const d = (counters.value as any).data || {}
+    stats.illnessCount = d.illnessCount
+    stats.medicineCount = d.medicineCount
+    stats.doctorCount = d.doctorCount
+  }
 })
 </script>
 

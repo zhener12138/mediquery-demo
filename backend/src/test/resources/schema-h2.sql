@@ -100,18 +100,6 @@ CREATE TABLE `illness_medicine_rel` (
 CREATE INDEX `idx_illness_id` ON `illness_medicine_rel` (`illness_id`);
 CREATE INDEX `idx_medicine_id` ON `illness_medicine_rel` (`medicine_id`);
 
-DROP TABLE IF EXISTS `search_history`;
-CREATE TABLE `search_history` (
-    `id`           INT          NOT NULL AUTO_INCREMENT,
-    `user_id`      INT          NOT NULL,
-    `keyword`      VARCHAR(500) NOT NULL,
-    `operate_type` TINYINT      NOT NULL,
-    `create_time`  DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`)
-);
-CREATE INDEX `idx_search_history_user_id` ON `search_history` (`user_id`);
-CREATE INDEX `idx_search_history_create_time` ON `search_history` (`create_time`);
-
 DROP TABLE IF EXISTS `feedback`;
 CREATE TABLE `feedback` (
     `id`          INT          NOT NULL AUTO_INCREMENT,
@@ -155,17 +143,6 @@ CREATE TABLE `ai_chat_record` (
     PRIMARY KEY (`id`)
 );
 CREATE INDEX `idx_user_session` ON `ai_chat_record` (`user_id`, `session_id`);
-
-DROP TABLE IF EXISTS `user_favorite`;
-CREATE TABLE `user_favorite` (
-    `id`          INT         NOT NULL AUTO_INCREMENT,
-    `user_id`     INT         NOT NULL,
-    `target_type` VARCHAR(20) NOT NULL,
-    `target_id`   INT         NOT NULL,
-    `create_time` DATETIME    DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    CONSTRAINT `uk_user_target` UNIQUE (`user_id`, `target_type`, `target_id`)
-);
 
 DROP TABLE IF EXISTS `sys_operation_log`;
 CREATE TABLE `sys_operation_log` (

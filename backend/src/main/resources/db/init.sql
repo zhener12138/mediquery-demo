@@ -107,20 +107,9 @@ CREATE TABLE `illness_medicine_rel` (
     KEY `idx_medicine_id` (`medicine_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='疾病药品关联表';
 
--- ============================================================
--- 搜索历史表
--- ============================================================
-DROP TABLE IF EXISTS `search_history`;
-CREATE TABLE `search_history` (
-    `id`           INT          NOT NULL AUTO_INCREMENT COMMENT '历史ID',
-    `user_id`      INT          NOT NULL COMMENT '用户ID',
-    `keyword`      VARCHAR(500) NOT NULL COMMENT '搜索关键词',
-    `operate_type` TINYINT      NOT NULL COMMENT '操作类型: 1-搜索, 2-查看疾病, 3-查看药品',
-    `create_time`  DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    KEY `idx_user_id` (`user_id`),
-    KEY `idx_create_time` (`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='搜索历史表';
+-- 说明：原 search_history（搜索历史）与 user_favorite（用户收藏）两张表已删除。
+-- 它们从建库起就没有对应的实体类、Mapper、Service 和接口，属于纯死表，
+-- 留着只会让接手的人以为「有这功能，只是没做完」。真要做历史/收藏时按新需求重建。
 
 -- ============================================================
 -- 意见反馈表
@@ -174,20 +163,6 @@ CREATE TABLE `ai_chat_record` (
     PRIMARY KEY (`id`),
     KEY `idx_user_session` (`user_id`, `session_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI对话记录表';
-
--- ============================================================
--- 用户收藏表
--- ============================================================
-DROP TABLE IF EXISTS `user_favorite`;
-CREATE TABLE `user_favorite` (
-    `id`          INT          NOT NULL AUTO_INCREMENT COMMENT '收藏ID',
-    `user_id`     INT          NOT NULL COMMENT '用户ID',
-    `target_type` VARCHAR(20)  NOT NULL COMMENT '收藏类型: illness/medicine',
-    `target_id`   INT          NOT NULL COMMENT '收藏目标ID',
-    `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_user_target` (`user_id`, `target_type`, `target_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户收藏表';
 
 -- ============================================================
 -- 操作日志表
