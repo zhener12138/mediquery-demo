@@ -5,8 +5,12 @@ echo ============================================
 echo  MediQuery Backend
 echo ============================================
 
-if not exist "target\mediquery-backend-1.0.0.jar" (
-    echo [ERROR] jar not found in backend\target
+REM Pick the newest jar in target (handles rebuilt or renamed jars)
+set "JAR="
+for /f "delims=" %%f in ('dir /b /o-d "target\mediquery-backend*.jar" 2^>nul') do if not defined JAR set "JAR=target\%%f"
+
+if not defined JAR (
+    echo [ERROR] no jar found in backend target directory
     echo         Build it first:  mvn -DskipTests package
     pause
     exit /b 1
@@ -19,9 +23,12 @@ set "SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/mediquery?serverTimezone=
 set "SPRING_DATASOURCE_USERNAME=root"
 set "REDIS_PORT=6379"
 set "JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=E:/JavaAIProject/_jtmp"
+REM qwen-turbo free quota on this account is exhausted (HTTP 429); qwen-plus works
+set "AI_DASHSCOPE_MODEL=qwen-plus"
 
 echo Backend : http://localhost:8080
 echo Swagger : http://localhost:8080/swagger-ui.html
+echo Jar     : %JAR%
 echo.
-java -jar target\mediquery-backend-1.0.0.jar
+java -jar %JAR%
 pause
