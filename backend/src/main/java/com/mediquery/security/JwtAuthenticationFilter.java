@@ -65,6 +65,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             var auth = new UsernamePasswordAuthenticationToken(
                     username, null, List.of(new SimpleGrantedAuthority(roleName)));
             auth.setDetails(userId);
+            // 同时写入 request attribute：@RequestAttribute 读的是 request attribute，
+            // 与 Authentication.details 是两个互不相通的存储，缺这行会导致 UserController 恒返回 401
+            if (userId != null) {
+                request.setAttribute("userId", userId.intValue());
+            }
             SecurityContextHolder.getContext().setAuthentication(auth);
         } catch (Exception e) {
             log.warn("JWT 解析失败: {}", e.getMessage());

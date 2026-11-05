@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -41,14 +43,22 @@ public class AiDoctorService {
     }
 
     /**
-     * 获取同一 session 的最近 20 条对话历史，按时间正序排列。
+     * 获取同一 session 的最近 20 条对话历史，按时间正序排列（供 LLM 消费）。
+     *
+     * <p>必须 desc + limit 才能取到「最近」的 20 条；直接 asc + limit 取的是最早的 20 条，
+     * 长会话会永远看不到新内容。取回后在内存中反转为正序。
      */
     private List<AiChatRecord> getSessionHistory(Integer userId, String sessionId) {
-        return chatRecordMapper.selectList(new LambdaQueryWrapper<AiChatRecord>()
+        var recent = chatRecordMapper.selectList(new LambdaQueryWrapper<AiChatRecord>()
                 .eq(AiChatRecord::getUserId, userId)
                 .eq(AiChatRecord::getSessionId, sessionId)
-                .orderByAsc(AiChatRecord::getCreateTime)
+                .orderByDesc(AiChatRecord::getCreateTime)
+                .orderByDesc(AiChatRecord::getId)
                 .last("LIMIT 20"));
+        // 反转为时间正序，保持 LLM 对话上下文的自然阅读顺序
+        var ordered = new ArrayList<>(recent);
+        Collections.reverse(ordered);
+        return ordered;
     }
 
     /** SSE 流式对话（RAG + 多轮） */

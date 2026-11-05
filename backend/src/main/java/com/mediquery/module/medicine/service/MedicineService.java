@@ -5,9 +5,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mediquery.common.dto.PageResult;
 import com.mediquery.module.medicine.entity.Medicine;
 import com.mediquery.module.medicine.mapper.MedicineMapper;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+
+import java.util.List;
 
 /**
  * 药品百科服务：按类型/关键词分页搜索、详情缓存、CRUD
@@ -33,26 +36,57 @@ public class MedicineService {
         return PageResult.of(result.getTotal(), page, size, result.getRecords());
     }
 
-    // 获取详情（Redis缓存）
-    @Cacheable(value = "medicine", key = "#id")
+    /**
+     * 多关键词批量检索：一次 SQL 完成所有关键词的 OR 匹配，供 RAG 使用。
+     *
+     * @param keywords 关键词列表（调用方已去重）
+     * @param limit    最多返回条数
+     */
+    public List<Medicine> searchByKeywords(List<String> keywords, int limit) {
+        if (keywords == null || keywords.isEmpty()) return List.of();
+        var query = new LambdaQueryWrapper<Medicine>().eq(Medicine::getStatus, 1);
+        query.and(w -> {
+            for (int i = 0; i < keywords.size(); i++) {
+                var kw = keywords.get(i);
+                if (i > 0) w.or();
+                w.like(Medicine::getName, kw).or().like(Medicine::getKeyword, kw).or().like(Medicine::getEffect, kw);
+            }
+        });
+        query.orderByDesc(Medicine::getCreateTime);
+        query.last("LIMIT " + limit);
+        return medicineMapper.selectList(query);
+    }
+
+    /**
+     * 获取详情（Redis缓存）。
+     *
+     * <p>只缓存上架药品：{@code status == 0} 或已删除时返回 null 且不入缓存，
+     * 避免下架药品在缓存 TTL 内仍然可读。写操作通过 {@code @CacheEvict} 主动失效。
+     */
+    @Cacheable(value = "medicine", key = "#id", unless = "#result == null")
     public Medicine getById(Integer id) {
-        return medicineMapper.selectById(id);
+        var medicine = medicineMapper.selectById(id);
+        if (medicine == null || medicine.getStatus() == 0) return null;
+        return medicine;
     }
 
     // 新增药品（默认状态=上架）
+    @CacheEvict(value = "medicine", allEntries = true)
     public Medicine save(Medicine medicine) {
         medicine.setStatus(1);
         medicineMapper.insert(medicine);
         return medicine;
     }
 
-    // 更新药品信息
+    // 更新药品信息（含上下架切换，需清理缓存）
+    @CacheEvict(value = "medicine", key = "#medicine.id")
     public Medicine update(Medicine medicine) {
         medicineMapper.updateById(medicine);
         return medicine;
     }
 
     // 逻辑删除
+    @CacheEvict(value = "medicine", key = "#id")
     public void delete(Integer id) {
         medicineMapper.deleteById(id);
     }

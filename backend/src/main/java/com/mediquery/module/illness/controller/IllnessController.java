@@ -36,7 +36,10 @@ public class IllnessController {
     @GetMapping("/{id}")
     public Result<Illness> detail(@PathVariable Integer id) {
         var illness = illnessService.getById(id);
-        return illness == null ? Result.notFound("疾病不存在") : Result.success(illness);
+        if (illness == null) return Result.notFound("疾病不存在");
+        // 浏览量自增独立于缓存读取：即使详情命中缓存，这里仍会计数并失效缓存
+        illnessService.incrViewCount(id);
+        return Result.success(illness);
     }
 
     @Operation(summary = "获取所有疾病分类")

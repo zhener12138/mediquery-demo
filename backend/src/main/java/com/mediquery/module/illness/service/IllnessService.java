@@ -1,6 +1,7 @@
 package com.mediquery.module.illness.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mediquery.common.dto.PageResult;
 import com.mediquery.module.illness.entity.Illness;
@@ -8,11 +9,14 @@ import com.mediquery.module.illness.entity.IllnessCategory;
 import com.mediquery.module.illness.mapper.IllnessCategoryMapper;
 import com.mediquery.module.illness.mapper.IllnessMapper;
 import com.mediquery.module.illness.mapper.IllnessMedicineRelMapper;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * 疾病百科服务：多条件分页搜索(关键词模糊匹配 + 科室筛选)、详情缓存、浏览量自增
@@ -41,29 +45,84 @@ public class IllnessService {
         }
         query.orderByDesc(Illness::getViewCount).orderByDesc(Illness::getCreateTime);
         var result = illnessMapper.selectPage(new Page<>(page, size), query);
-        for (var illness : result.getRecords()) {
-            if (illness.getCategoryId() != null) {
-                var category = categoryMapper.selectById(illness.getCategoryId());
-                if (category != null) illness.setCategoryName(category.getName());
-            }
-        }
+        fillCategoryNames(result.getRecords());
         return PageResult.of(result.getTotal(), page, size, result.getRecords());
     }
 
-    // 获取详情：Redis缓存 → 浏览量+1 → 关联分类名 → 关联药品列表
+    /**
+     * 批量回填分类名称，替代逐条 selectById 造成的 N+1 查询。
+     * 一页 N 条记录从「1 + N 次 SQL」降为「1 + 1 次 SQL」。
+     */
+    private void fillCategoryNames(List<Illness> records) {
+        if (records == null || records.isEmpty()) return;
+        var categoryIds = records.stream()
+                .map(Illness::getCategoryId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (categoryIds.isEmpty()) return;
+        var nameById = categoryMapper.selectBatchIds(categoryIds).stream()
+                .collect(Collectors.toMap(IllnessCategory::getId, IllnessCategory::getName));
+        for (var illness : records) {
+            var name = nameById.get(illness.getCategoryId());
+            if (name != null) illness.setCategoryName(name);
+        }
+    }
+
+    // 获取详情：Redis缓存 → 关联分类名 → 关联药品列表
+    // 注意：浏览量自增已独立到 incrViewCount()，不能在 @Cacheable 方法体内做写操作，
+    // 否则缓存命中时整段方法被跳过，浏览量永久冻结。
     @Cacheable(value = "illness", key = "#id")
     public Illness getById(Integer id) {
         var illness = illnessMapper.selectById(id);
         if (illness == null || illness.getStatus() == 0 || illness.getDeleted() == 1) return null;
-        illness.setViewCount(illness.getViewCount() == null ? 1 : illness.getViewCount() + 1);
-        illnessMapper.updateById(illness);
         if (illness.getCategoryId() != null) {
             var category = categoryMapper.selectById(illness.getCategoryId());
             if (category != null) illness.setCategoryName(category.getName());
         }
-        var medicines = relMapper.findMedicinesByIllnessId(id);
-        illness.setMedicines(medicines);
+        illness.setMedicines(relMapper.findMedicinesByIllnessId(id));
         return illness;
+    }
+
+    /**
+     * 浏览量自增：独立方法，走 SQL 原子自增并清理详情缓存。
+     *
+     * <p>用 {@code setSql("view_count = view_count + 1")} 而非先读后写，
+     * 避免并发下的更新丢失；{@code @CacheEvict} 让详情缓存失效，
+     * 下次读取能拿到最新浏览量。
+     */
+    @CacheEvict(value = "illness", key = "#id")
+    public void incrViewCount(Integer id) {
+        illnessMapper.update(null, new LambdaUpdateWrapper<Illness>()
+                .eq(Illness::getId, id)
+                .setSql("view_count = view_count + 1"));
+    }
+
+    /**
+     * 多关键词批量检索：一次 SQL 完成所有关键词的 OR 匹配，供 RAG 使用。
+     *
+     * <p>替代「每个关键词各调一次 search」的做法 —— 那种写法对一句 24 个 token 的问题
+     * 会产生约 96 次数据库往返（每次含 count + 分页两条 SQL）。
+     *
+     * @param keywords 关键词列表（调用方已去重）
+     * @param limit    最多返回条数
+     */
+    public List<Illness> searchByKeywords(List<String> keywords, int limit) {
+        if (keywords == null || keywords.isEmpty()) return List.of();
+        var query = new LambdaQueryWrapper<Illness>().eq(Illness::getStatus, 1);
+        query.and(w -> {
+            for (int i = 0; i < keywords.size(); i++) {
+                var kw = keywords.get(i);
+                if (i > 0) w.or();
+                w.like(Illness::getName, kw).or().like(Illness::getCause, kw).or().like(Illness::getSymptom, kw);
+            }
+        });
+        // 库内先按浏览量粗排，最终排序由调用方按关键词命中情况精排
+        query.orderByDesc(Illness::getViewCount);
+        query.last("LIMIT " + limit);
+        var records = illnessMapper.selectList(query);
+        fillCategoryNames(records);
+        return records;
     }
 
     // 获取所有分类（按sortOrder升序）
