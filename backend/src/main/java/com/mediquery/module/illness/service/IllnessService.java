@@ -43,7 +43,13 @@ public class IllnessService {
         if (StringUtils.hasText(keyword)) {
             query.and(w -> w.like(Illness::getName, keyword).or().like(Illness::getCause, keyword).or().like(Illness::getSymptom, keyword));
         }
-        query.orderByDesc(Illness::getViewCount).orderByDesc(Illness::getCreateTime);
+        // 排序必须有唯一 tie-breaker（最后的 id）。
+        // 否则 viewCount 和 createTime 都相同的记录，MySQL 返回顺序是未定义的 ——
+        // 分页时同一行可能在第 1 页和第 2 页各出现一次，也可能一行都不出现。
+        // createTime 是 DATETIME（秒级精度），同秒批量插入就会全部相等，这不是极端情况。
+        query.orderByDesc(Illness::getViewCount)
+                .orderByDesc(Illness::getCreateTime)
+                .orderByDesc(Illness::getId);
         var result = illnessMapper.selectPage(new Page<>(page, size), query);
         fillCategoryNames(result.getRecords());
         return PageResult.of(result.getTotal(), page, size, result.getRecords());
@@ -117,8 +123,10 @@ public class IllnessService {
                 w.like(Illness::getName, kw).or().like(Illness::getCause, kw).or().like(Illness::getSymptom, kw);
             }
         });
-        // 库内先按浏览量粗排，最终排序由调用方按关键词命中情况精排
-        query.orderByDesc(Illness::getViewCount);
+        // 库内先按浏览量粗排，最终排序由调用方按关键词命中情况精排。
+        // 带 LIMIT 就必须有 tie-breaker：否则同浏览量的记录谁被选中是不确定的，
+        // 同一句问诊每次召回的知识可能不同，RAG 行为不可复现。
+        query.orderByDesc(Illness::getViewCount).orderByDesc(Illness::getId);
         query.last("LIMIT " + limit);
         var records = illnessMapper.selectList(query);
         fillCategoryNames(records);

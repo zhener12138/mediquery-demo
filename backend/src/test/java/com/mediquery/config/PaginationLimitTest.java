@@ -1,5 +1,6 @@
 package com.mediquery.config;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.mediquery.module.illness.entity.Illness;
 import com.mediquery.module.illness.mapper.IllnessMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,7 +44,9 @@ class PaginationLimitTest {
     void seed() {
         // 插入 150 条，正好跨过 100 的上限，这样"被截断"和"没被截断"能区分开。
         // 如果只插 10 条，就算上限生效测试也会过——那样等于没测。
-        illnessMapper.delete(null);
+        // 用带条件的 delete 而不是 delete(null)：BlockAttackInnerInterceptor
+        // 会拦截无 where 的全表删除（这是刻意的防线，测试也要守）。
+        illnessMapper.delete(Wrappers.<Illness>lambdaQuery().gt(Illness::getId, 0));
         for (int i = 1; i <= 150; i++) {
             var illness = new Illness();
             illness.setCategoryId(1);

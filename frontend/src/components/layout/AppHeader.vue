@@ -15,8 +15,8 @@
         <router-link to="/illnesses" class="nav-link">疾病百科</router-link>
         <router-link to="/medicines" class="nav-link">药品查询</router-link>
         <router-link to="/doctors" class="nav-link">找医生</router-link>
-        <router-link to="/ai-doctor" class="nav-link ai-link">
-          <el-icon><ChatDotRound /></el-icon> 智能医生
+        <router-link to="/consultation" class="nav-link ai-link">
+          <el-icon><ChatDotRound /></el-icon> 在线问诊
         </router-link>
 
         <template v-if="auth.isLoggedIn()">

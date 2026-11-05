@@ -44,7 +44,21 @@ public class DashScopeClient {
             + "回答时应严格基于提供的知识库内容，当知识库没有相关信息时应建议用户咨询专业医生。";
 
     private static final String CTX_KEY_PREFIX = "rag:ctx:";
-    private static final Duration CTX_TTL = Duration.ofDays(7);
+
+    /**
+     * 知识上下文缓存的存活时间。
+     *
+     * <p><b>从 7 天改成 24 小时</b>（阶段二 2.11b）。理由：
+     * <ul>
+     *   <li>缓存里存的是用户症状描述命中的疾病/药品知识，属于健康信息。
+     *       留 7 天等于让一份「他最近咳嗽发烧」的记录在 Redis 里躺一周。</li>
+     *   <li>一次问诊很少跨越一天。24 小时覆盖了「晚上聊到一半去睡觉，第二天接着问」
+     *       这个真实场景，再长就没有业务价值了。</li>
+     *   <li>真正该控制生命周期的是问诊单本身 —— 完结/取消/超时三条路径都会
+     *       主动调 {@link #clearContext}，TTL 只是兜底（进程崩溃时来不及清）。</li>
+     * </ul>
+     */
+    private static final Duration CTX_TTL = Duration.ofHours(24);
 
     private final RedisTemplate<String, Object> redisTemplate;
 
@@ -72,6 +86,29 @@ public class DashScopeClient {
             context = cached != null ? cached.toString() : "";
         }
         return doChat(history, userMessage, context);
+    }
+
+    /**
+     * 清除某个会话的知识上下文缓存。
+     *
+     * <p>由问诊单关闭时调用（完结 / 取消 / 超时三条路径）。给用户一个明确的
+     * 「这条会话的知识窗口结束了」语义，而不是让它自然过期。
+     *
+     * <p><b>为什么这个方法在这个类里</b>：{@code CTX_KEY_PREFIX} 是本类的私有常量。
+     * 让业务层去拼 {@code "rag:ctx:" + sessionId}，等于把这个前缀同时定义在两个地方 ——
+     * 改一处漏一处，缓存就永远清不掉。键的创建与销毁必须同属一个类。
+     *
+     * <p>删不存在的 key 不报错，天然幂等。
+     */
+    public void clearContext(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) return;
+        try {
+            redisTemplate.delete(CTX_KEY_PREFIX + sessionId);
+        } catch (Exception e) {
+            // 清缓存失败不该阻断问诊单关闭 —— Redis 故障时更应该让业务继续。
+            // TTL 24 小时会兜住这次遗漏。
+            log.warn("清除 RAG 上下文失败 sessionId={}", sessionId, e);
+        }
     }
 
     /**

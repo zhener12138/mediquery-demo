@@ -144,6 +144,28 @@ CREATE TABLE `ai_chat_record` (
 );
 CREATE INDEX `idx_user_session` ON `ai_chat_record` (`user_id`, `session_id`);
 
+DROP TABLE IF EXISTS `consultation`;
+CREATE TABLE `consultation` (
+    `id`              INT          NOT NULL AUTO_INCREMENT,
+    `patient_id`      INT          NOT NULL,
+    `session_id`      VARCHAR(36)  NOT NULL,
+    `chief_complaint` VARCHAR(500) NOT NULL,
+    `status`          TINYINT      DEFAULT 0 NOT NULL,
+    `severity`        TINYINT      DEFAULT 0 NOT NULL,
+    `summary_status`  TINYINT      DEFAULT 0 NOT NULL,
+    `ai_summary`      TEXT         DEFAULT NULL,
+    `conclusion`      TEXT         DEFAULT NULL,
+    `last_active_at`  DATETIME     NOT NULL,
+    `closed_at`       DATETIME     DEFAULT NULL,
+    `version`         INT          DEFAULT 0 NOT NULL,
+    `create_time`     DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    `update_time`     DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`)
+);
+CREATE UNIQUE INDEX `uk_session` ON `consultation` (`session_id`);
+CREATE INDEX `idx_patient_status` ON `consultation` (`patient_id`, `status`);
+CREATE INDEX `idx_status_active` ON `consultation` (`status`, `last_active_at`);
+
 DROP TABLE IF EXISTS `sys_operation_log`;
 CREATE TABLE `sys_operation_log` (
     `id`          INT          NOT NULL AUTO_INCREMENT,

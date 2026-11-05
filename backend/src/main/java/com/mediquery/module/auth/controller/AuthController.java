@@ -2,6 +2,7 @@ package com.mediquery.module.auth.controller;
 
 import com.mediquery.common.dto.Result;
 import com.mediquery.module.auth.dto.LoginRequest;
+import com.mediquery.module.auth.dto.RefreshRequest;
 import com.mediquery.module.auth.dto.RegisterRequest;
 import com.mediquery.module.auth.dto.SendCodeRequest;
 import com.mediquery.module.auth.dto.TokenResponse;
@@ -12,7 +13,7 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * 认证控制器：登录(JWT双Token)、注册(邮箱验证码)、发送验证码
+ * 认证控制器：登录(JWT双Token)、token 续期、注册(邮箱验证码)、发送验证码
  */
 @Tag(name = "认证管理")
 @RestController
@@ -26,6 +27,12 @@ public class AuthController {
     @Operation(summary = "用户登录")
     @PostMapping("/login")
     public Result<TokenResponse> login(@Valid @RequestBody LoginRequest request) { return Result.success(authService.login(request)); }
+
+    @Operation(summary = "用 refreshToken 换新 token")
+    @PostMapping("/refresh")
+    public Result<TokenResponse> refresh(@Valid @RequestBody RefreshRequest request) {
+        return Result.success(authService.refresh(request.getRefreshToken()));
+    }
 
     @Operation(summary = "用户注册")
     @PostMapping("/register")

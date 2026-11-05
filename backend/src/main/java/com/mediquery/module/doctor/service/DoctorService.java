@@ -27,7 +27,12 @@ public class DoctorService {
         if (StringUtils.hasText(department)) query.eq(Doctor::getDepartment, department);
         if (StringUtils.hasText(keyword))
             query.and(w -> w.like(Doctor::getName, keyword).or().like(Doctor::getSpecialty, keyword).or().like(Doctor::getHospital, keyword));
-        query.orderByAsc(Doctor::getSortOrder).orderByDesc(Doctor::getCreateTime);
+        // tie-breaker 必须有，理由同 IllnessService.search：sortOrder 与 createTime
+        // 都可能相等（批量导入的医生 sortOrder 常是同一批值），没有 id 兜底时
+        // 分页顺序未定义，翻页会看到重复的医生。
+        query.orderByAsc(Doctor::getSortOrder)
+                .orderByDesc(Doctor::getCreateTime)
+                .orderByDesc(Doctor::getId);
         var result = doctorMapper.selectPage(new Page<>(page, size), query);
         return PageResult.of(result.getTotal(), page, size, result.getRecords());
     }

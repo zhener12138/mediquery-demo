@@ -1,5 +1,6 @@
 package com.mediquery.module.illness;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.mediquery.module.illness.entity.Illness;
 import com.mediquery.module.illness.mapper.IllnessMapper;
 import com.mediquery.module.illness.service.IllnessService;
@@ -50,8 +51,9 @@ class IllnessServiceTest {
     @BeforeEach
     void cleanUp() {
         // 每个用例自己造数据，不依赖种子数据。
-        // 用 delete(null) 会触发 BlockAttack 拦截器（如果配了），所以用 update 带 where 清空
-        illnessMapper.delete(null);
+        // 必须带 where 条件：BlockAttackInnerInterceptor 会拦无 where 的全表删除，
+        // delete(null) 会直接抛异常。这也是生产代码的防线，测试同样要守。
+        illnessMapper.delete(Wrappers.<Illness>lambdaQuery().gt(Illness::getId, 0));
     }
 
     private Illness newIllness(String name, String cause, String symptom, int status) {

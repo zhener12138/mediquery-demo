@@ -14,6 +14,7 @@ const router = createRouter({
     { path: '/doctors', name: 'doctors', component: () => import('@/pages/public/DoctorList.vue') },
     { path: '/doctor/:id', name: 'doctor-detail', component: () => import('@/pages/public/DoctorDetail.vue') },
     { path: '/ai-doctor', name: 'ai-doctor', meta: { requiresAuth: true }, component: () => import('@/pages/user/AiDoctorPage.vue') },
+    { path: '/consultation/:id?', name: 'consultation', meta: { requiresAuth: true }, component: () => import('@/pages/user/ConsultationPage.vue') },
     { path: '/profile', name: 'profile', meta: { requiresAuth: true }, component: () => import('@/pages/user/ProfilePage.vue') },
     { path: '/feedback', name: 'feedback', meta: { requiresAuth: true }, component: () => import('@/pages/user/FeedbackPage.vue') },
     { path: '/admin/dashboard', name: 'dashboard', meta: { requiresAuth: true, requiresAdmin: true }, component: () => import('@/pages/admin/DashboardPage.vue') },

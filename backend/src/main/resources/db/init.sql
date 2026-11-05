@@ -165,6 +165,41 @@ CREATE TABLE `ai_chat_record` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI对话记录表';
 
 -- ============================================================
+-- 问诊单表
+--
+-- 这是「在线问诊」的核心表：一次问诊 = 一张单，有明确的开始和结束。
+--
+-- 为什么需要它：ai_chat_record 只记「谁说了什么」，没有「这次问诊结束了没有」。
+-- 没有状态，就没有状态机、没有并发争用、没有超时收尾 —— 也就没有可讲的业务复杂度。
+--
+-- summary_status 是刻意加的第二个状态维度：完结后要异步生成 AI 小结，
+-- 生成是过程（可能失败、可能重试），不该和问诊单本身的生老病死混在一个字段里。
+--
+-- version 是乐观锁：患者点完结和定时任务判超时可能同时打同一张单。
+-- ============================================================
+DROP TABLE IF EXISTS `consultation`;
+CREATE TABLE `consultation` (
+    `id`              INT          NOT NULL AUTO_INCREMENT COMMENT '问诊ID',
+    `patient_id`      INT          NOT NULL COMMENT '患者ID',
+    `session_id`      VARCHAR(36)  NOT NULL COMMENT '会话ID，与ai_chat_record.session_id对应',
+    `chief_complaint` VARCHAR(500) NOT NULL COMMENT '主诉',
+    `status`          TINYINT      NOT NULL DEFAULT 0 COMMENT '状态: 0-进行中, 1-已完成, 2-已取消, 3-超时关闭',
+    `severity`        TINYINT      NOT NULL DEFAULT 0 COMMENT '严重度: 0-低, 1-中, 2-高(展示紧急就医提示)',
+    `summary_status`  TINYINT      NOT NULL DEFAULT 0 COMMENT '小结状态: 0-未生成, 1-生成中, 2-已生成, 3-生成失败',
+    `ai_summary`      TEXT         DEFAULT NULL COMMENT 'AI结构化小结(JSON)',
+    `conclusion`      TEXT         DEFAULT NULL COMMENT '最终结论(完结时由小结落成)',
+    `last_active_at`  DATETIME     NOT NULL COMMENT '最后活动时间，超时判定用',
+    `closed_at`       DATETIME     DEFAULT NULL COMMENT '关闭时间',
+    `version`         INT          NOT NULL DEFAULT 0 COMMENT '乐观锁版本号',
+    `create_time`     DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    `update_time`     DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_session` (`session_id`),
+    KEY `idx_patient_status` (`patient_id`, `status`),
+    KEY `idx_status_active` (`status`, `last_active_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='问诊单表';
+
+-- ============================================================
 -- 操作日志表
 -- ============================================================
 DROP TABLE IF EXISTS `sys_operation_log`;

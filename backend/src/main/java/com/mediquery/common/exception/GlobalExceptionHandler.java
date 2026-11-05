@@ -2,6 +2,7 @@ package com.mediquery.common.exception;
 
 import com.mediquery.common.dto.Result;
 import com.mediquery.common.web.TraceIdFilter;
+import com.mediquery.module.consultation.statemachine.IllegalStateTransitionException;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,17 @@ public class GlobalExceptionHandler {
             default -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
         return ResponseEntity.status(status).body(Result.error(e.getCode(), e.getMessage()));
+    }
+
+    // 状态机拒绝：当前资源状态不允许这个操作
+    // 与 BusinessException(409) 分开是因为它带着 from/to 结构化信息，
+    // 以后要埋点统计「哪个转移最常被撞」时，不用去正则解析消息文本。
+    @ExceptionHandler(IllegalStateTransitionException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Result<?> handleIllegalTransition(IllegalStateTransitionException e) {
+        log.warn("状态转移被拒绝: dimension={} from={} to={} msg={}",
+                e.getDimension(), e.getFrom(), e.getTo(), e.getMessage());
+        return Result.error(IllegalStateTransitionException.CODE, e.getMessage());
     }
 
     // 密码错误

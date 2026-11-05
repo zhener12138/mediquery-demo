@@ -52,6 +52,18 @@ public class JwtUtil {
     private final long accessTokenExpiration;
     private final long refreshTokenExpiration;
 
+    /**
+     * token 类型声明。access 与 refresh 必须是两种东西——
+     *
+     * <p>改之前 refreshToken 只是「过期时间更长的 token」，两者结构完全相同，
+     * 服务端没有任何办法分辨手里这个串是哪种。加上 typ 之后，
+     * {@code /auth/refresh} 才能理直气壮地拒绝一个 accessToken：
+     * 「你拿的是通行证，不是续期凭据」。
+     */
+    private static final String TYPE_CLAIM = "typ";
+    private static final String TYPE_ACCESS = "access";
+    private static final String TYPE_REFRESH = "refresh";
+
     public JwtUtil(@Value("${jwt.secret}") String secret,
                    @Value("${jwt.access-token-expiration}") long accessTokenExpiration,
                    @Value("${jwt.refresh-token-expiration}") long refreshTokenExpiration) {
@@ -92,7 +104,7 @@ public class JwtUtil {
     // 生成accessToken（含userId+role，15分钟过期）
     public String generateAccessToken(Long userId, String username, Integer role) {
         return Jwts.builder()
-                .claims(Map.of("userId", userId, "role", role))
+                .claims(Map.of("userId", userId, "role", role, TYPE_CLAIM, TYPE_ACCESS))
                 .subject(username)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + accessTokenExpiration))
@@ -103,12 +115,42 @@ public class JwtUtil {
     // 生成refreshToken（仅userId，7天过期）
     public String generateRefreshToken(Long userId, String username) {
         return Jwts.builder()
-                .claim("userId", userId)
+                .claims(Map.of("userId", userId, TYPE_CLAIM, TYPE_REFRESH))
                 .subject(username)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + refreshTokenExpiration))
                 .signWith(key)
                 .compact();
+    }
+
+    /**
+     * 这个串是不是 refreshToken。
+     *
+     * <p>用 {@code TYPE_REFRESH.equals(...)} 判断而不是 {@code !TYPE_ACCESS.equals(...)}：
+     * 老版本签出来的 token 没有 typ 声明，两种都判 false 更安全——
+     * 把它们当成「既不是 access 也不是 refresh」，让用户重新登录一次，
+     * 好过让一个语义不明的串通过检查。
+     */
+    public boolean isRefreshToken(String token) {
+        try {
+            return TYPE_REFRESH.equals(parseToken(token).get(TYPE_CLAIM, String.class));
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /** 这个串是不是 accessToken。 */
+    public boolean isAccessToken(String token) {
+        try {
+            return TYPE_ACCESS.equals(parseToken(token).get(TYPE_CLAIM, String.class));
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /** accessToken 的有效期（毫秒），供 {@code /auth/refresh} 回填 expiresIn，避免再硬编码一份。 */
+    public long getAccessTokenExpiration() {
+        return accessTokenExpiration;
     }
 
     // 解析token（验签+解码payload）

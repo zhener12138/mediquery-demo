@@ -31,7 +31,9 @@ public class MedicineService {
         if (StringUtils.hasText(keyword)) {
             query.and(w -> w.like(Medicine::getName, keyword).or().like(Medicine::getKeyword, keyword).or().like(Medicine::getEffect, keyword));
         }
-        query.orderByDesc(Medicine::getCreateTime);
+        // tie-breaker 必须有，理由同 IllnessService.search：createTime 是秒级精度，
+        // 同秒插入的行排序未定义，分页会跨页重复或漏行。
+        query.orderByDesc(Medicine::getCreateTime).orderByDesc(Medicine::getId);
         var result = medicineMapper.selectPage(new Page<>(page, size), query);
         return PageResult.of(result.getTotal(), page, size, result.getRecords());
     }
@@ -52,7 +54,9 @@ public class MedicineService {
                 w.like(Medicine::getName, kw).or().like(Medicine::getKeyword, kw).or().like(Medicine::getEffect, kw);
             }
         });
-        query.orderByDesc(Medicine::getCreateTime);
+        // 带 LIMIT 的召回同样要 tie-breaker：否则每次查询返回的最后几条可能不同，
+        // RAG 的检索结果不可复现，评估数字也就没意义了。
+        query.orderByDesc(Medicine::getCreateTime).orderByDesc(Medicine::getId);
         query.last("LIMIT " + limit);
         return medicineMapper.selectList(query);
     }

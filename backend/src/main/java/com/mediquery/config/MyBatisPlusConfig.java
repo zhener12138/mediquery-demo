@@ -2,6 +2,8 @@ package com.mediquery.config;
 
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.BlockAttackInnerInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.OptimisticLockerInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.context.annotation.Bean;
@@ -50,6 +52,18 @@ public class MyBatisPlusConfig {
         // 返回空至少语义是对的（"没有更多了"）。
         pagination.setOverflow(false);
         interceptor.addInnerInterceptor(pagination);
+
+        // 乐观锁。@Version 注解**只有**在注册了这个拦截器之后才生效 ——
+        // 这是 MyBatis-Plus 一个容易踩的坑：字段上写了 @Version 却没配拦截器，
+        // 更新时既不会带上 version 条件，也不会自增 version，事务照样提交成功，
+        // 只是并发保护完全不存在，而且没有任何报错。
+        interceptor.addInnerInterceptor(new OptimisticLockerInnerInterceptor());
+
+        // 阻断全表更新/删除。update 或 delete 没有 where 条件时直接抛异常。
+        // 现有代码里有 illnessMapper.delete(null) 这种写法（测试里清表用），
+        // 加了拦截器后**生产代码**再这么写会立刻炸出来，而不是悄悄清空一张表。
+        // 注意：测试里清表要改用 QueryWrapper，不能靠 delete(null)。
+        interceptor.addInnerInterceptor(new BlockAttackInnerInterceptor());
 
         return interceptor;
     }
