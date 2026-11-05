@@ -33,7 +33,7 @@ public class DoctorService {
     }
 
     // 获取详情（Redis缓存）
-    @Cacheable(value = "doctor", key = "#id")
+    @Cacheable(value = "doctor", key = "#id", unless = "#result == null")
     public Doctor getById(Integer id) { return doctorMapper.selectById(id); }
 
     // 新增医生（默认在岗）

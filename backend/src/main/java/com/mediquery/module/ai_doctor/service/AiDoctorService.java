@@ -1,6 +1,7 @@
 package com.mediquery.module.ai_doctor.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mediquery.common.exception.AiServiceException;
 import com.mediquery.integration.ai.DashScopeClient;
 import com.mediquery.integration.ai.KnowledgeRetrievalService;
 import com.mediquery.module.ai_doctor.entity.AiChatRecord;
@@ -86,14 +87,42 @@ public class AiDoctorService {
                     Thread.sleep(20);
                 }
                 emitter.complete();
+            } catch (AiServiceException e) {
+                // AI 侧真实故障：不能当成正常回答写进历史，也不能让前端以为对话成功
+                log.warn("AI 服务不可用 code={} status={} msg={}",
+                        e.getUpstreamCode(), e.getUpstreamStatus(), e.getMessage());
+                sendError(emitter, sid, e);
             } catch (Exception e) {
                 log.error("SSE 流式输出异常", e);
-                emitter.completeWithError(e);
+                sendError(emitter, sid, null);
             } finally {
                 SecurityContextHolder.clearContext();
             }
         }).start();
         return emitter;
+    }
+
+    /**
+     * 下发错误事件后正常关闭流。
+     *
+     * <p>不用 completeWithError：那会让 Spring 走异常解析流程，客户端只能看到连接中断，
+     * 拿不到可读原因。这里发一条 {"type":"error"} 事件再 complete，前端能区分「故障」与「回答」。
+     */
+    private void sendError(SseEmitter emitter, String sid, AiServiceException e) {
+        try {
+            var payload = new java.util.HashMap<String, Object>();
+            payload.put("type", "error");
+            payload.put("sessionId", sid);
+            payload.put("message", e != null ? e.getMessage() : "AI 服务暂时不可用，请稍后再试");
+            payload.put("code", e != null ? e.getUpstreamCode() : "UNKNOWN");
+            payload.put("retryable", e != null && e.getUpstreamStatus() == 429);
+            emitter.send(SseEmitter.event().name("delta")
+                    .data(objectMapper.writeValueAsString(payload)));
+            emitter.complete();
+        } catch (Exception sendFail) {
+            log.warn("下发错误事件失败", sendFail);
+            emitter.completeWithError(sendFail);
+        }
     }
 
     private void saveRecord(Integer userId, String sessionId, String role, String content) {

@@ -51,13 +51,13 @@ public class AuthService {
         var user = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, request.getUsername()));
         if (user == null) {
-            throw new BusinessException("用户名或密码错误");
+            throw BusinessException.unauthorized("用户名或密码错误");
         }
         if (user.getStatus() == 0) {
-            throw new BusinessException("账号已被禁用");
+            throw BusinessException.forbidden("账号已被禁用");
         }
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new BusinessException("用户名或密码错误");
+            throw BusinessException.unauthorized("用户名或密码错误");
         }
 
         var accessToken = jwtUtil.generateAccessToken(user.getId().longValue(), user.getUsername(), user.getRoleStatus());

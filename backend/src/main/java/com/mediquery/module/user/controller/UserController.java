@@ -1,5 +1,6 @@
 package com.mediquery.module.user.controller;
 
+import com.mediquery.common.exception.BusinessException;
 import com.mediquery.common.dto.Result;
 import com.mediquery.integration.oss.OssClient;
 import com.mediquery.module.user.entity.User;
@@ -34,7 +35,7 @@ public class UserController {
     @Operation(summary = "获取当前用户信息")
     @GetMapping("/user/me")
     public Result<User> me(@RequestAttribute(required = false) Integer userId) {
-        if (userId == null) return Result.unauthorized("请先登录");
+        if (userId == null) throw BusinessException.unauthorized("请先登录");
         var user = userMapper.selectById(userId);
         if (user != null) user.setPassword(null);
         return Result.success(user);
@@ -43,9 +44,9 @@ public class UserController {
     @Operation(summary = "更新个人资料")
     @PutMapping("/user/profile")
     public Result<User> updateProfile(@RequestAttribute(required = false) Integer userId, @RequestBody User updates) {
-        if (userId == null) return Result.unauthorized("请先登录");
+        if (userId == null) throw BusinessException.unauthorized("请先登录");
         var user = userMapper.selectById(userId);
-        if (user == null) return Result.notFound("用户不存在");
+        if (user == null) throw BusinessException.notFound("用户不存在");
         if (updates.getRealName() != null) user.setRealName(updates.getRealName());
         if (updates.getAge() != null) user.setAge(updates.getAge());
         if (updates.getSex() != null) user.setSex(updates.getSex());
@@ -59,10 +60,10 @@ public class UserController {
     @Operation(summary = "修改密码")
     @PutMapping("/user/password")
     public Result<?> updatePassword(@RequestAttribute(required = false) Integer userId, @RequestBody Map<String, String> body) {
-        if (userId == null) return Result.unauthorized("请先登录");
+        if (userId == null) throw BusinessException.unauthorized("请先登录");
         var user = userMapper.selectById(userId);
-        if (user == null) return Result.notFound("用户不存在");
-        if (!passwordEncoder.matches(body.get("oldPassword"), user.getPassword())) return Result.badRequest("原密码错误");
+        if (user == null) throw BusinessException.notFound("用户不存在");
+        if (!passwordEncoder.matches(body.get("oldPassword"), user.getPassword())) throw BusinessException.badRequest("原密码错误");
         user.setPassword(passwordEncoder.encode(body.get("newPassword")));
         userMapper.updateById(user);
         return Result.success();

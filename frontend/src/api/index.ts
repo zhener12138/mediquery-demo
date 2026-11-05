@@ -18,7 +18,10 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   response => response.data,
   error => {
-    if (error.response?.status === 401) {
+    // 登录/验证码接口的 401 是「用户名或密码错误」，不能当成登录过期处理
+    const url: string = error.config?.url || ''
+    const isAuthEntry = url.startsWith('/auth/')
+    if (error.response?.status === 401 && !isAuthEntry) {
       localStorage.removeItem('accessToken')
       localStorage.removeItem('userInfo')
       router.push('/login')

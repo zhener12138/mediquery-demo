@@ -1,5 +1,6 @@
 package com.mediquery.module.medicine.controller;
 
+import com.mediquery.common.exception.BusinessException;
 import com.mediquery.common.dto.PageResult;
 import com.mediquery.common.dto.Result;
 import com.mediquery.module.medicine.entity.Medicine;
@@ -33,7 +34,8 @@ public class MedicineController {
     @GetMapping("/{id}")
     public Result<Medicine> detail(@PathVariable Integer id) {
         var medicine = medicineService.getById(id);
-        return (medicine == null || medicine.getDeleted() == 1) ? Result.notFound("药品不存在") : Result.success(medicine);
+        if (medicine == null || medicine.getDeleted() == 1) throw BusinessException.notFound("药品不存在");
+        return Result.success(medicine);
     }
 
     @Operation(summary = "新增药品")

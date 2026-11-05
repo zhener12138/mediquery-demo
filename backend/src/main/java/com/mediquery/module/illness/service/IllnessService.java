@@ -72,7 +72,7 @@ public class IllnessService {
     // 获取详情：Redis缓存 → 关联分类名 → 关联药品列表
     // 注意：浏览量自增已独立到 incrViewCount()，不能在 @Cacheable 方法体内做写操作，
     // 否则缓存命中时整段方法被跳过，浏览量永久冻结。
-    @Cacheable(value = "illness", key = "#id")
+    @Cacheable(value = "illness", key = "#id", unless = "#result == null")
     public Illness getById(Integer id) {
         var illness = illnessMapper.selectById(id);
         if (illness == null || illness.getStatus() == 0 || illness.getDeleted() == 1) return null;

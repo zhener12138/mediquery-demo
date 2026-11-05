@@ -1,5 +1,6 @@
 package com.mediquery.module.illness.controller;
 
+import com.mediquery.common.exception.BusinessException;
 import com.mediquery.common.dto.PageResult;
 import com.mediquery.common.dto.Result;
 import com.mediquery.module.illness.entity.Illness;
@@ -36,7 +37,7 @@ public class IllnessController {
     @GetMapping("/{id}")
     public Result<Illness> detail(@PathVariable Integer id) {
         var illness = illnessService.getById(id);
-        if (illness == null) return Result.notFound("疾病不存在");
+        if (illness == null) throw BusinessException.notFound("疾病不存在");
         // 浏览量自增独立于缓存读取：即使详情命中缓存，这里仍会计数并失效缓存
         illnessService.incrViewCount(id);
         return Result.success(illness);
