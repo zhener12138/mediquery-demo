@@ -1,0 +1,66 @@
+# ============================================================
+# 测试专用配置：覆盖 src/main/resources/application.yml
+#
+# 设计目标：mvn test 不依赖任何外部服务（MySQL / Redis / 阿里云 / SMTP），
+# 一台干净的机器 clone 下来就能跑绿。
+#
+#   · 数据库 → H2 内存库，MODE=MySQL 贴近生产方言
+#   · Redis  → 用 Mock 替代（见 BaseIntegrationTest 的 @MockBean）
+#   · AI/OSS/邮件 → 真实客户端只在被调用时才建立连接，测试不触发
+# ============================================================
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:mediquery_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+    # 覆盖生产配置里的 Druid，测试用 H2 自带的轻量连接池
+    type: com.zaxxer.hikari.HikariDataSource
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-h2.sql
+      # 不在测试里灌种子数据：种子数据会随业务演进变化，
+      # 把它当测试夹具会让每个用例都隐式依赖那 10 条疾病/7 条药品。
+      # 需要数据的用例自己准备。
+      data-locations:
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+  mail:
+    host: localhost
+    port: 3025
+    username: test@example.com
+    password: test-password
+    title: "test"
+    template: "code=%s,ttl=%d"
+    valid: 5
+
+mybatis-plus:
+  configuration:
+    # 测试时不打印满屏 SQL，只在失败时按需打开
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+logging:
+  level:
+    root: WARN
+    com.mediquery: INFO
+
+jwt:
+  secret: test-only-secret-key-for-unit-tests-must-be-at-least-256-bits-long
+  access-token-expiration: 900000
+  refresh-token-expiration: 604800000
+
+ai:
+  dashscope:
+    api-key: test-key-not-used-in-tests
+    model: qwen-turbo
+
+aliyun:
+  oss:
+    endpoint: oss-cn-beijing.aliyuncs.com
+    access-key-id: test-ak
+    access-key-secret: test-sk
+    bucket-name: test-bucket

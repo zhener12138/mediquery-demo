@@ -26,6 +26,7 @@
         <dashscope.version>2.16.7</dashscope.version>
         <aliyun-oss.version>3.17.4</aliyun-oss.version>
         <springdoc.version>2.8.6</springdoc.version>
+        <h2.version>2.3.232</h2.version>
     </properties>
 
     <dependencies>
@@ -149,6 +150,14 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- H2：只用于测试。生产跑 MySQL，测试跑内存库，互不干扰 -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>${h2.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -156,6 +165,38 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!--
+              surefire：把 dotenv 挡在测试之外。
+
+              背景：项目有 spring.dotenv.path=./.env，backend/.env 真实存在（开发库密码 +
+              真实 API Key）。如果 dotenv 的属性源优先级高于 application-test.yml，
+              就会把 H2 换成真实 MySQL，而 schema-h2.sql 第一行是 DROP TABLE。
+
+              实测结论（2026-11-05，替换 backend/.env 后跑探针）：
+                dotenv 确实被加载了（探针注入的 PROBE_KEY 能读到），
+                但 spring.datasource.url 仍然来自 application-test.yml（H2 mediquery_test），
+                dotenv 里的 SPRING_DATASOURCE_URL 没有生效。
+              也就是说：当前版本下 profile 特定配置赢过 dotenv，这个风险是理论上的。
+
+              那为什么还留这个 argLine：
+              1) 这个优先级顺序是 Spring Boot 内部实现，升级版本可能变，不能赌；
+              2) 代价为零，一行配置换掉一整类事故；
+              3) 这里写实测结论而不是"肯定会被覆盖"，是为了让接手的人知道依据，
+                 而不是照抄一个听起来吓人的理由。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>-Dspring.dotenv.path=./.env.not-used-in-tests -Dspring.dotenv.ignoreIfMissing=true -Djava.io.tmpdir=${project.basedir}/target/tmp</argLine>
+                    <!-- Mockito 5 的 inline mock maker 要往临时目录解压 agent jar；
+                         本机 %TEMP% 不可写，必须把 java.io.tmpdir 指到 target/tmp -->
+                    <systemPropertyVariables>
+                        <java.io.tmpdir>${project.basedir}/target/tmp</java.io.tmpdir>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
         </plugins>
     </build>
