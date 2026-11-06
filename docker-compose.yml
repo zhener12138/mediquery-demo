@@ -64,6 +64,16 @@ services:
       ALIYUN_OSS_BUCKET_NAME: ${ALIYUN_OSS_BUCKET_NAME}
     ports:
       - "8088:8080"
+    # 探针打 actuator，不打业务接口。
+    # 打业务接口的问题：/api/v1/stats 在数据库连不上时会返回 500，容器判定 unhealthy 是对的；
+    # 但反过来，一个需要认证的接口返回 401 也会被判成 unhealthy —— 那说明的是"探针写错了"，
+    # 不是"服务挂了"。health 端点回答的是同一个问题，而且答案更准（它自己会检查 DataSource）。
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
   frontend:
     build: ./frontend

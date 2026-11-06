@@ -64,3 +64,14 @@ aliyun:
     access-key-id: test-ak
     access-key-secret: test-sk
     bucket-name: test-bucket
+
+# 测试环境必须显式走 LIKE 实现。
+# 原因：H2 没有 MATCH 函数（实测报 Function "MATCH" not found [90022-232]），
+# 而 schema-h2.sql 也刻意不建 FULLTEXT 索引（H2 不认 WITH PARSER ngram）。
+# 不写这一段，两个 RetrievalStrategy 实现都不会被装配，所有 @SpringBootTest 起不来。
+#
+# 代价：CI 绿只证明「检索链路是通的」，不证明生产那条 FULLTEXT SQL 是对的。
+# 那条 SQL 的验证在真 MySQL 上手工做，结果记录在设计文档 3.6 节。
+mediquery:
+  retrieval:
+    strategy: like

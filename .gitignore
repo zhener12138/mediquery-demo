@@ -16,7 +16,12 @@ target/
 *.war
 *.class
 *.log
+*.log.gz
 *.tmp
+
+# 日志目录 —— logback 的滚动归档是 .log.gz，上面的 *.log 匹配不到，
+# 所以整目录一起忽略（否则 backend/logs/ 会以未跟踪状态挂在 git status 里）
+logs/
 
 # ============================================================
 # Node / Frontend

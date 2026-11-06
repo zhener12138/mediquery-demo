@@ -74,6 +74,51 @@ logging:
   file:
     path: ${LOG_PATH:logs}
 
+# Actuator —— 只暴露 health 与 info
+#
+# 为什么只开这两个：
+#   metrics/prometheus/env/beans 这些端点会吐出内部实现细节（bean 名、环境变量键、
+#   JVM 参数），在一个对外可访问的端口上等于把架构图送人。真要做监控，
+#   应当由独立的运维网络访问、加独立鉴权，而不是顺手挂在业务端口上。
+#
+# health 的细节默认是 never（只返回 {"status":"UP"}），不是为了好看——
+# 探针只该回答"能不能干活"，不该回答"数据库密码是哪个"。
+#
+# Docker healthcheck 打的就是 /actuator/health，见 docker-compose.yml。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: false
+  health:
+    mail:
+      # 关掉邮件健康检查。
+      #
+      # 这不是"眼不见为净"。实测发现：spring-boot-starter-mail 会自动注册
+      # MailHealthIndicator，它连不上 SMTP 就报 DOWN，而 HealthEndpoint 的聚合规则是
+      # 「任一 indicator 为 DOWN，整体即 DOWN」，于是整个服务对外显示 unhealthy。
+      #
+      # 后果是灾难性的等比放大：邮件服务器抖一下 → 容器被判 unhealthy →
+      # Docker 反复重启容器 / 负载均衡把它摘出 → 一个"验证码发不出去"的小故障，
+      # 变成"整个网站 502"的大事故。
+      #
+      # 判断依据：邮件不是处理请求的必要依赖。请求链路（查疾病、问诊、AI 对话）
+      # 一条都不经过 SMTP，邮件只在注册发验证码时用一次。
+      # 探针回答的问题是"这实例能不能接流量"，不是"所有外部依赖都好吗"。
+      #
+      # 想监控邮件可用性，正确做法是单独做告警（比如定时任务发一封自测信），
+      # 而不是让它参与 readiness 判定。
+      enabled: false
+
 # SpringDoc OpenAPI
 springdoc:
   swagger-ui:
@@ -110,3 +155,25 @@ aliyun:
 # 注意：不要写成单个 *，那等于放开通配，会让这里失去意义
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+
+# RAG 召回策略
+#   fulltext（默认）= 一条 MATCH ... AGAINST 走 ft_illness / ft_medicine 全文索引
+#   like            = 退回到 OR LIKE 拼接（H2 测试环境用，H2 没有 MATCH 函数）
+#
+# 实测对比（50000 行合成数据，MySQL 8.0.37，ngram_token_size=2）：
+#
+#   形状                                 OR LIKE      FULLTEXT
+#   3 关键词 + ORDER BY + LIMIT 50       140~190ms    51~69ms
+#   8 关键词 + ORDER BY + LIMIT 50       485ms        371~390ms
+#   1 关键词（命中 5000 行）            81ms         22ms
+#   稀疏关键词（命中 7 行）             50ms         <1ms
+#
+#   执行计划：LIKE → type=ALL rows=49586（全表扫描）
+#             FULLTEXT → type=fulltext key=ft_illness
+#
+# 结论：命中行少时 FULLTEXT 快一个数量级；命中行极多（>1 万）时两者都要
+# 对结果集 filesort，差距缩小到 1.3 倍 —— 但 FULLTEXT 仍不慢于 LIKE，
+# 且它带来的是"数据库侧按相关度排序"，这是 LIKE 给不了的。
+mediquery:
+  retrieval:
+    strategy: ${RETRIEVAL_STRATEGY:fulltext}

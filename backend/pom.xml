@@ -56,6 +56,23 @@
             <artifactId>spring-boot-starter-aop</artifactId>
         </dependency>
 
+        <!--
+          Actuator：只暴露 health 与 info。
+          为什么现在才加：阶段一之前项目没有任何“活着还是死了”的探针，
+          docker-compose 里 backend 的 healthcheck 只能靠 curl 一个业务接口，
+          业务接口挂了（比如数据库连不上）容器还显示 healthy，等于没探。
+
+          暴露范围在 application.yml 的 management.endpoints.web.exposure.include
+          里只写 health,info —— 不加 metrics/prometheus/env。
+          理由：这些端点会吐出 bean 名、环境变量键、JVM 参数，挂在业务端口上等于送架构图。
+          真要做监控应该走独立的运维网络与独立鉴权，而不是顺手开在 8080 上。
+          （注：Druid 的 stat-view-servlet 在当前配置里是 enabled: false，不存在重复暴露的问题。）
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- MySQL -->
         <dependency>
             <groupId>com.mysql</groupId>

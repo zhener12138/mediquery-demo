@@ -4,9 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.mediquery.module.illness.entity.Illness;
-import com.mediquery.module.illness.service.IllnessService;
 import com.mediquery.module.medicine.entity.Medicine;
-import com.mediquery.module.medicine.service.MedicineService;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -22,14 +20,20 @@ import java.util.stream.Collectors;
  * <p>检索策略：
  * <ol>
  *   <li>中文按 2-4 字滑动窗口粗分词，并过滤停用词与纯数字词；</li>
- *   <li>全部关键词合并为一条 SQL 的 OR 条件批量召回（疾病 1 条 + 药品 1 条）；</li>
- *   <li>在内存中按「命中关键词数量 + 关键词长度」加权打分，取 Top3；</li>
+ *   <li>交给 {@link RetrievalStrategy} 用一条 SQL 批量召回（疾病 1 条 + 药品 1 条），
+ *       生产环境走 MySQL 全文索引，测试环境走 OR LIKE；</li>
+ *   <li>在内存中按「名称命中 ×3、正文命中 ×1、词长加权」精排，取 Top3；</li>
  *   <li>格式化为 Markdown 注入 LLM 上下文。</li>
  * </ol>
  *
- * <p>早期实现是「每个关键词各调一次分页搜索」，一句 20+ 词的问题会产生上百次
- * 数据库往返（含 count），且最终按插入顺序截断、与相关度无关。本类已改为
- * 「一次查询 + 相关度重排」。
+ * <p>演变过程（三步，每一步都是因为上一步被实测证明不够）：
+ * <ol>
+ *   <li>最初「每个关键词各调一次分页搜索」：一句 20+ 词的问题产生上百次数据库往返，
+ *       且最终按插入顺序截断、与相关度无关；</li>
+ *   <li>改成「全部关键词拼一条 OR LIKE」：往返降到 2 次，但 72 个 LIKE 条件
+ *       让 MySQL 完全用不上索引，只能全表扫描；</li>
+ *   <li>改成「MATCH ... AGAINST 走全文索引」：可用索引，且数据库侧就能按相关度返回。</li>
+ * </ol>
  */
 @Service
 public class KnowledgeRetrievalService {
@@ -39,12 +43,10 @@ public class KnowledgeRetrievalService {
     /** 单次批量召回的上限，留足重排空间 */
     private static final int RECALL_LIMIT = 50;
 
-    private final IllnessService illnessService;
-    private final MedicineService medicineService;
+    private final RetrievalStrategy retrievalStrategy;
 
-    public KnowledgeRetrievalService(IllnessService illnessService, MedicineService medicineService) {
-        this.illnessService = illnessService;
-        this.medicineService = medicineService;
+    public KnowledgeRetrievalService(RetrievalStrategy retrievalStrategy) {
+        this.retrievalStrategy = retrievalStrategy;
     }
 
     /**
@@ -74,7 +76,7 @@ public class KnowledgeRetrievalService {
 
     /** 批量召回后按相关度取 Top3 */
     private List<Illness> rankIllnesses(List<String> keywords) {
-        var candidates = illnessService.searchByKeywords(keywords, RECALL_LIMIT);
+        var candidates = retrievalStrategy.recallIllnesses(keywords, RECALL_LIMIT);
         return candidates.stream()
                 .map(i -> new Scored<>(i, scoreIllness(i, keywords)))
                 .filter(s -> s.score > 0)
@@ -86,7 +88,7 @@ public class KnowledgeRetrievalService {
 
     /** 批量召回后按相关度取 Top3 */
     private List<Medicine> rankMedicines(List<String> keywords) {
-        var candidates = medicineService.searchByKeywords(keywords, RECALL_LIMIT);
+        var candidates = retrievalStrategy.recallMedicines(keywords, RECALL_LIMIT);
         return candidates.stream()
                 .map(m -> new Scored<>(m, scoreMedicine(m, keywords)))
                 .filter(s -> s.score > 0)
@@ -134,6 +136,13 @@ public class KnowledgeRetrievalService {
     /**
      * 拆词：中文无空格，使用滑动窗口提取 2-4 字短词作为搜索关键词。
      * 同时过滤常见无意义词与纯数字词。
+     *
+     * <p><b>先抹掉停用词再滑窗，而不是滑窗之后再判。</b>
+     * 这两件事不一样：「怎么办」整词在停用词表里，但滑窗会切出「怎么」「么办」，
+     * 它们不在表里，于是照样被拿去查库。用户只打一句「怎么办」时，
+     * 旧实现会发出一次注定零命中的检索，白跑一遍数据库与全文索引。
+     * 这个问题是在写 {@code onlyStopWordsSkipsRecall} 时暴露的 ——
+     * 那条测试最初是红的，改的是实现不是测试。
      */
     private static final Set<String> STOP_WORDS = Set.of(
             "什么", "怎么样", "如何", "为什么", "怎么办", "可以吗", "有没有",
@@ -141,15 +150,24 @@ public class KnowledgeRetrievalService {
             "需要", "是什么", "了吗", "呢", "吧", "呀", "啊", "吗"
     );
 
+    /** 按长度降序，保证「怎么样」先于「么样」被抹掉 */
+    private static final List<String> STOP_WORDS_BY_LENGTH =
+            STOP_WORDS.stream()
+                    .sorted(Comparator.comparingInt(String::length).reversed())
+                    .toList();
+
     private List<String> tokenize(String msg) {
         // 去标点与空白
         var cleaned = msg.replaceAll("[？?！!。，,、；;：:（）()\\s]+", "");
         if (cleaned.isEmpty()) return List.of();
+        // 先把停用词整段抹掉，剩下的才是有信息量的部分
+        var stem = stripStopWords(cleaned);
+        if (stem.isEmpty()) return List.of();
         var result = new LinkedHashSet<String>();
         // 滑动窗口：4字 → 3字 → 2字，长词优先（长词区分度更高）
         for (int len = 4; len >= 2; len--) {
-            for (int i = 0; i + len <= cleaned.length(); i++) {
-                var token = cleaned.substring(i, i + len);
+            for (int i = 0; i + len <= stem.length(); i++) {
+                var token = stem.substring(i, i + len);
                 if (STOP_WORDS.contains(token)) continue;
                 if (isAllDigits(token)) continue;
                 result.add(token);
@@ -157,6 +175,16 @@ public class KnowledgeRetrievalService {
         }
         return new ArrayList<>(result);
     }
+
+    /** 按长度从长到短抹除停用词 */
+    private static String stripStopWords(String s) {
+        var out = s;
+        for (var sw : STOP_WORDS_BY_LENGTH) {
+            if (out.contains(sw)) out = out.replace(sw, "");
+        }
+        return out;
+    }
+
 
     private static boolean isAllDigits(String s) {
         for (int i = 0; i < s.length(); i++) {

@@ -62,6 +62,13 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/doctors/**").permitAll()
                 // 首页那几个公开计数，不含任何后台数据
                 .requestMatchers(HttpMethod.GET, "/api/v1/stats").permitAll()
+                // 容器探针。必须放行：Docker healthcheck 与负载均衡探活都不带 token，
+                // 被 401 拦掉的话容器会一直显示 unhealthy。
+                // 暴露面上是安全的：application.yml 里只 include 了 health,info，
+                // 且 health 的 show-details 是 never（只返回 {"status":"UP"}）。
+                .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                // 其余 actuator 端点（即便将来误开）一律要认证，不给"顺手开了就裸奔"的机会
+                .requestMatchers("/actuator/**").authenticated()
                 .requestMatchers("/api/v1/files/upload").authenticated()
                 .requestMatchers("/api/v1/feedbacks").authenticated()
                 // Swagger/Knife4j
