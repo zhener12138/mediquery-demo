@@ -27,6 +27,7 @@
         <aliyun-oss.version>3.17.4</aliyun-oss.version>
         <springdoc.version>2.8.6</springdoc.version>
         <h2.version>2.3.232</h2.version>
+        <jacoco.version>0.8.12</jacoco.version>
     </properties>
 
     <dependencies>
@@ -207,13 +208,49 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <argLine>-Dspring.dotenv.path=./.env.not-used-in-tests -Dspring.dotenv.ignoreIfMissing=true -Djava.io.tmpdir=${project.basedir}/target/tmp</argLine>
+                    <!-- @{argLine} 是 surefire 的延迟替换：JaCoCo 的 prepare-agent 会在这个属性里
+                         注入 -javaagent，这里必须引用它，否则自己写死 argLine 会把 Java agent 挤掉，
+                         覆盖率报告出来是全 0 而测试照常绿。 -->
+                    <argLine>@{argLine} -Dspring.dotenv.path=./.env.not-used-in-tests -Dspring.dotenv.ignoreIfMissing=true -Djava.io.tmpdir=${project.basedir}/target/tmp</argLine>
                     <!-- Mockito 5 的 inline mock maker 要往临时目录解压 agent jar；
                          本机 %TEMP% 不可写，必须把 java.io.tmpdir 指到 target/tmp -->
                     <systemPropertyVariables>
                         <java.io.tmpdir>${project.basedir}/target/tmp</java.io.tmpdir>
                     </systemPropertyVariables>
                 </configuration>
+            </plugin>
+
+            <!--
+              JaCoCo：只做「测量 + 报表」，**不设硬性覆盖率门槛**。
+
+              为什么不设 <check> 门槛：门槛最容易的满足方式是把测试写浅（只断言不抛异常、
+              只覆盖 happy path），而不是把代码测对。这个项目的 184 个用例是靠
+              「改坏生产代码后测试必须变红」的变异验证培养出来的，
+              加一条数字门槛反而会诱导后来的人往反方向走。
+
+              覆盖率的意义在于暴露「一次都没被执行过的代码」——
+              jacoco:report 生成的 target/site/jacoco/index.html 里标红的部分，
+              是这次改动可能藏着 bug 的地方，比一个总百分比有用得多。
+            -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -92,6 +92,37 @@ class RedisConfigTest {
     }
 
     /**
+     * 带 BigDecimal 的实体必须能往返。
+     *
+     * <p>这条是补的，原因是它真的坏过：阶段一收窄白名单时只放了
+     * {@code com.mediquery / java.util / java.time}，漏了 {@code java.math}。
+     * 结果是药品详情第一次查（走库）一切正常，第二次查（命中缓存）直接抛
+     * {@code SerializationException} → 500。而当时所有测试都是绿的 ——
+     * 因为没有任何一条测试走过「缓存写入 + 缓存读取」这个往返。
+     *
+     * <p>Medicine.price 是 {@code BigDecimal}，所以用 Medicine 当载体。
+     */
+    @Test
+    void bigDecimalSurvivesRoundTrip() throws Exception {
+        var s = serializer();
+
+        var medicine = new com.mediquery.module.medicine.entity.Medicine();
+        medicine.setId(3);
+        medicine.setName("布洛芬");
+        medicine.setType(0);
+        medicine.setStatus(1);
+        medicine.setPrice(new java.math.BigDecimal("12.50"));
+
+        Object back = s.deserialize(s.serialize(medicine));
+
+        assertInstanceOf(com.mediquery.module.medicine.entity.Medicine.class, back);
+        var got = (com.mediquery.module.medicine.entity.Medicine) back;
+        assertEquals(0, new java.math.BigDecimal("12.50").compareTo(got.getPrice()),
+                "BigDecimal 读不回来，说明 java.math 不在白名单里 —— "
+                        + "药品详情会首次正常、再次命中缓存时 500");
+    }
+
+    /**
      * 核心安全断言：白名单之外的类必须被拒。
      *
      * <p>靶子用的是 {@code com.evilprobe.DeserializationProbe}，不是 {@code java.lang.Runtime}。
@@ -111,7 +142,7 @@ class RedisConfigTest {
 
         assertThrows(Exception.class,
                 () -> s.deserialize(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
-                "com.evilprobe 不在白名单里（只允许 com.mediquery / java.util / java.time），"
+                "com.evilprobe 不在白名单里（只允许 com.mediquery / java.util / java.time / java.math），"
                         + "反序列化必须失败。通过了说明白名单没生效，Redis 反序列化 RCE 防线等于不存在。");
     }
 
@@ -129,7 +160,7 @@ class RedisConfigTest {
 
         assertThrows(Exception.class,
                 () -> s.deserialize(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
-                "白名单只允许 com.mediquery / java.util / java.time，"
+                "白名单只允许 com.mediquery / java.util / java.time / java.math，"
                         + "Spring 内部的类必须被拒");
     }
 }

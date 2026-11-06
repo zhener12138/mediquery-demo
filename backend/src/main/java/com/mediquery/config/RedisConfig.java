@@ -37,12 +37,14 @@ import java.time.Duration;
  *
  * <h3>现在怎么限制</h3>
  *
- * <p>换成 {@link BasicPolymorphicTypeValidator}，只放行三类：
+ * <p>换成 {@link BasicPolymorphicTypeValidator}，只放行四类：
  *
  * <ul>
  *   <li>{@code com.mediquery.} 下的所有类 —— 我们自己的实体和 DTO，可控；</li>
  *   <li>{@code java.util.} —— 缓存的值可能是 List / Map / Set，这些必须能还原；</li>
- *   <li>{@code java.time.} —— LocalDateTime 等，实体的 createTime/updateTime 要用。</li>
+ *   <li>{@code java.time.} —— LocalDateTime 等，实体的 createTime/updateTime 要用；</li>
+ *   <li>{@code java.math.} —— {@code Medicine.price} 是 {@code BigDecimal}。
+ *       这条是后来补的：少了它，药品详情首次走库正常、再次命中缓存 500。</li>
  * </ul>
  *
  * <p>其余一律拒绝。将来如果新加了实体在别的包下，读缓存会抛
@@ -68,6 +70,10 @@ public class RedisConfig {
             "com.mediquery.",
             "java.util.",
             "java.time.",
+            // java.math：Medicine.price 是 BigDecimal。漏掉它的时候，
+            // 药品详情第一次查（走库）正常，第二次查（命中缓存）直接
+            // SerializationException → 500。缓存往返测试就是为了钉住这类漏洞。
+            "java.math.",
     };
 
     private PolymorphicTypeValidator typeValidator() {
