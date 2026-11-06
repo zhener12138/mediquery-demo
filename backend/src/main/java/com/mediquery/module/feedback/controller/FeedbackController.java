@@ -5,6 +5,7 @@ import com.mediquery.module.feedback.entity.Feedback;
 import com.mediquery.module.feedback.service.FeedbackService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import com.mediquery.module.operationlog.aspect.AuditLog;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,5 +34,6 @@ public class FeedbackController {
 
     @Operation(summary = "回复反馈")
     @PutMapping("/{id}/reply") @PreAuthorize("hasRole('ADMIN')")
+    @AuditLog(value = "回复反馈", module = "意见反馈")
     public Result<Feedback> reply(@PathVariable Integer id, @RequestBody Map<String, String> body) { return Result.success(feedbackService.reply(id, body.get("reply"))); }
 }

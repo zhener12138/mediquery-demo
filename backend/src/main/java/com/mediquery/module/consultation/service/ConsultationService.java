@@ -10,6 +10,7 @@ import com.mediquery.common.dto.PageResult;
 import com.mediquery.common.exception.BusinessException;
 import com.mediquery.integration.ai.DashScopeClient;
 import com.mediquery.module.consultation.dto.CreateConsultationRequest;
+import com.mediquery.module.operationlog.aspect.AuditLog;
 import com.mediquery.module.consultation.entity.Consultation;
 import com.mediquery.module.consultation.entity.ConsultationStatus;
 import com.mediquery.module.consultation.entity.Severity;
@@ -389,6 +390,7 @@ public class ConsultationService {
      * 那条脏数据会把整个超时机制永久卡死。
      */
     @Transactional
+    @AuditLog(value = "超时关闭问诊", module = "问诊", returnValueMustBe = "true")
     public boolean closeTimeout(Integer id) {
         Consultation c = consultationMapper.selectById(id);
         if (c == null || !Integer.valueOf(ConsultationStatus.IN_PROGRESS).equals(c.getStatus())) {

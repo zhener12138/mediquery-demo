@@ -8,6 +8,7 @@ import com.mediquery.module.user.mapper.UserMapper;
 import com.mediquery.module.user.vo.UserVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import com.mediquery.module.operationlog.aspect.AuditLog;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -60,6 +61,7 @@ public class UserController {
 
     @Operation(summary = "修改密码")
     @PutMapping("/user/password")
+    @AuditLog(value = "修改密码", module = "账户安全")
     public Result<?> updatePassword(@RequestAttribute(required = false) Integer userId, @RequestBody Map<String, String> body) {
         if (userId == null) throw BusinessException.unauthorized("请先登录");
         var user = userMapper.selectById(userId);
@@ -84,6 +86,7 @@ public class UserController {
 
     @Operation(summary = "启用/禁用用户")
     @PutMapping("/admin/users/{id}/status")
+    @AuditLog(value = "启用/禁用用户", module = "用户管理")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<?> toggleUserStatus(@PathVariable Integer id, @RequestBody Map<String, Integer> body) {
         var user = userMapper.selectById(id);

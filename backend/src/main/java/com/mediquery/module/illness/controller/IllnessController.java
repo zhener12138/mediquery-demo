@@ -8,6 +8,7 @@ import com.mediquery.module.illness.entity.IllnessCategory;
 import com.mediquery.module.illness.service.IllnessService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import com.mediquery.module.operationlog.aspect.AuditLog;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -49,13 +50,16 @@ public class IllnessController {
 
     @Operation(summary = "新增疾病")
     @PostMapping @PreAuthorize("hasRole('ADMIN')")
+    @AuditLog(value = "新增疾病", module = "疾病管理")
     public Result<Illness> create(@RequestBody Illness illness) { return Result.success(illnessService.save(illness)); }
 
     @Operation(summary = "更新疾病")
     @PutMapping("/{id}") @PreAuthorize("hasRole('ADMIN')")
+    @AuditLog(value = "修改疾病", module = "疾病管理")
     public Result<Illness> update(@PathVariable Integer id, @RequestBody Illness illness) { illness.setId(id); return Result.success(illnessService.update(illness)); }
 
     @Operation(summary = "删除疾病")
     @DeleteMapping("/{id}") @PreAuthorize("hasRole('ADMIN')")
+    @AuditLog(value = "删除疾病", module = "疾病管理")
     public Result<?> delete(@PathVariable Integer id) { illnessService.delete(id); return Result.success(); }
 }

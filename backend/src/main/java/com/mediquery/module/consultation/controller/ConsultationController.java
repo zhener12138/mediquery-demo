@@ -7,6 +7,7 @@ import com.mediquery.module.consultation.security.ConsultationGuard;
 import com.mediquery.module.consultation.service.ConsultationMessageService;
 import com.mediquery.module.consultation.service.ConsultationService;
 import com.mediquery.module.consultation.vo.ConsultationVO;
+import com.mediquery.module.operationlog.aspect.AuditLog;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -109,6 +110,7 @@ public class ConsultationController {
     /** 完结。立即返回，小结异步生成。 */
     @PutMapping("/{id}/complete")
     @PreAuthorize("@consultGuard.isOwner(#id, authentication)")
+    @AuditLog(value = "完结问诊", module = "问诊")
     public Result<ConsultationVO> complete(@PathVariable Integer id,
                                            org.springframework.security.core.Authentication auth) {
         return Result.success(consultationService.complete(id, ConsultationGuard.currentUserId(auth)));
@@ -117,6 +119,7 @@ public class ConsultationController {
     /** 取消。重复取消静默成功（在 Service 里处理）。 */
     @PutMapping("/{id}/cancel")
     @PreAuthorize("@consultGuard.isOwner(#id, authentication)")
+    @AuditLog(value = "取消问诊", module = "问诊")
     public Result<ConsultationVO> cancel(@PathVariable Integer id,
                                          org.springframework.security.core.Authentication auth) {
         return Result.success(consultationService.cancel(id, ConsultationGuard.currentUserId(auth)));
@@ -125,6 +128,7 @@ public class ConsultationController {
     /** 重新生成小结。只允许从 FAILED 出发。 */
     @PutMapping("/{id}/summary/retry")
     @PreAuthorize("@consultGuard.isOwner(#id, authentication)")
+    @AuditLog(value = "重新生成小结", module = "问诊")
     public Result<ConsultationVO> retrySummary(@PathVariable Integer id,
                                                org.springframework.security.core.Authentication auth) {
         return Result.success(
@@ -134,6 +138,7 @@ public class ConsultationController {
     /** 删除。只允许删已终结的单子。 */
     @DeleteMapping("/{id}")
     @PreAuthorize("@consultGuard.isOwner(#id, authentication)")
+    @AuditLog(value = "删除问诊", module = "问诊")
     public Result<Void> delete(@PathVariable Integer id,
                                org.springframework.security.core.Authentication auth) {
         consultationService.delete(id, ConsultationGuard.currentUserId(auth));

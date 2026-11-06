@@ -2,6 +2,7 @@ package com.mediquery.integration.ai;
 
 import com.alibaba.dashscope.aigc.generation.Generation;
 import com.alibaba.dashscope.aigc.generation.GenerationParam;
+import com.alibaba.dashscope.aigc.generation.GenerationResult;
 import com.alibaba.dashscope.common.Message;
 import com.alibaba.dashscope.common.Role;
 import com.alibaba.dashscope.exception.ApiException;
@@ -76,15 +77,7 @@ public class DashScopeClient {
      */
     public String chatWithHistory(String sessionId, String userMessage,
                                    List<AiChatRecord> history, String knowledge) {
-        // 管理知识上下文缓存
-        String context;
-        if (StringUtils.hasText(knowledge)) {
-            context = knowledge;
-            redisTemplate.opsForValue().set(CTX_KEY_PREFIX + sessionId, knowledge, CTX_TTL);
-        } else {
-            var cached = redisTemplate.opsForValue().get(CTX_KEY_PREFIX + sessionId);
-            context = cached != null ? cached.toString() : "";
-        }
+        String context = resolveContext(sessionId, knowledge);
         return doChat(history, userMessage, context);
     }
 
@@ -112,9 +105,167 @@ public class DashScopeClient {
     }
 
     /**
+     * 带历史的多轮流式对话 —— 边收边吐。
+     *
+     * <p>与 {@link #chatWithHistory} 的区别：那个是 {@code gen.call(param)} 一次性拿全文，
+     * 这个走 {@code gen.streamCall(param)} + {@code incrementalOutput(true)}，
+     * 模型每吐几个字就回调一次 {@code onChunk}。
+     *
+     * <h3>为什么返回累积文本而不是 void</h3>
+     *
+     * <p>流式调用有「已经吐了一半然后失败」的中间态，这是同步调用不存在的。
+     * 返回累积文本，让调用方在 catch 里仍然知道自己已经发出去多少 ——
+     * 可以据此决定「把半截回复存库」还是「整条丢弃」。
+     * 没有这个返回值，调用方只能自己再维护一个 StringBuilder，重复一遍累积逻辑。
+     *
+     * <h3>调用方必须处理的两件事</h3>
+     *
+     * <ol>
+     *   <li>{@code onChunk} 抛出的异常会原样透出，不会被吞成 {@link AiServiceException}。
+     *       客户端断连时 SSE 的 {@code send} 会抛 IOException，这**不是** AI 故障，
+     *       不能报成「AI 服务不可用」。</li>
+     *   <li>失败前可能已经吐出部分内容，此时不能再发 {@code type=error} 让前端把
+     *       已有的气泡整个替换掉 —— 前端应保留半截内容并追加错误提示。</li>
+     * </ol>
+     *
+     * @param onChunk 每收到一片增量文本回调一次
+     * @return 累积的完整文本（失败时是已经收到的部分）
+     * @throws AiServiceException 上游调用失败
+     * @throws ChunkConsumerException onChunk 自身抛错（如客户端断连）
+     */
+    public String chatWithHistoryStreaming(String sessionId, String userMessage,
+                                           List<AiChatRecord> history, String knowledge,
+                                           java.util.function.Consumer<String> onChunk) {
+        String context = resolveContext(sessionId, knowledge);
+        List<Message> messages = buildMessages(history, userMessage, context);
+
+        var param = GenerationParam.builder()
+                .apiKey(apiKey)
+                .model(model)
+                .messages(messages)
+                .resultFormat(GenerationParam.ResultFormat.MESSAGE)
+                // 关键：不设 incrementalOutput 的话，SDK 每帧都会返回**从头到现在**的全文，
+                // 直接拼到前端就是「你好」「你好，我」「你好，我是」层层重复。
+                //
+                // 实测（2026-11-06，真机 8092，qwen-plus，同一句问诊）：
+                //   设 true → 拼起来 681 字，正文「咳嗽三天且有痰，是否"要紧"需结合…」
+                //   不设    → 拼起来 37113 字（54 倍），正文「咳嗽咳嗽三天且咳嗽三天且有痰，
+                //            咳嗽三天且有痰，是否"咳嗽三天且有痰，是否"要紧"…」
+                // 这不是优化开关，漏了它前端看到的就是一坨逐层重复的文本。
+                .incrementalOutput(true)
+                .build();
+
+        var gen = new Generation();
+        var accumulated = new StringBuilder();
+
+        try {
+            // blockingIterable 把 rx 的 Flowable 转成普通 for 循环。
+            // 不用 subscribe(...) 回调形式是为了让异常沿调用栈抛出，而不是掉进 rx 的 onError 黑洞。
+            for (var result : gen.streamCall(param).blockingIterable()) {
+                String piece = extractDelta(result);
+                if (piece == null || piece.isEmpty()) continue;
+                accumulated.append(piece);
+                try {
+                    onChunk.accept(piece);
+                } catch (Exception consumerFail) {
+                    // 客户端断连：停止拉流，但把已收到的东西还回去。
+                    // 这里**不**翻译成 AiServiceException —— 那是上游的错，这不是。
+                    throw new ChunkConsumerException(accumulated.toString(), consumerFail);
+                }
+            }
+        } catch (NoApiKeyException e) {
+            log.error("DashScope API Key 未配置");
+            throw AiServiceException.authFailed("NoApiKey", "未配置 API Key");
+        } catch (InputRequiredException e) {
+            log.error("DashScope 请求参数不合法", e);
+            throw AiServiceException.upstream(400, "InputRequired", "请求参数不合法");
+        } catch (ApiException e) {
+            throw translate(e);
+        }
+
+        return accumulated.toString();
+    }
+
+    /**
+     * 从一帧流式结果里取出增量文本。
+     *
+     * <p>流式响应里 choices 可能为空（最后一帧只有 finish_reason），
+     * 也可能 content 为 null。这些都不该报错，返回 null 让上层跳过即可。
+     */
+    private static String extractDelta(GenerationResult result) {
+        if (result == null || result.getOutput() == null) return null;
+        var choices = result.getOutput().getChoices();
+        if (choices == null || choices.isEmpty()) return null;
+        var msg = choices.get(0).getMessage();
+        return msg == null ? null : msg.getContent();
+    }
+
+    /**
+     * onChunk 自己抛错时的包装。
+     *
+     * <p>携带已经累积的文本：调用方要靠它决定「半截内容要不要存库」。
+     */
+    public static class ChunkConsumerException extends RuntimeException {
+        private final String partialText;
+
+        public ChunkConsumerException(String partialText, Throwable cause) {
+            super("推送片段失败：" + cause.getMessage(), cause);
+            this.partialText = partialText;
+        }
+
+        public String getPartialText() {
+            return partialText;
+        }
+    }
+
+    /**
+     * 解析知识上下文：有本轮检索结果就写缓存，没有就回落到上次的。
+     *
+     * <p>回落是为了解决「咳嗽发烧」→「那吃什么药」这类追问：第二轮全是停用词，
+     * 检索不出东西，但模型仍然需要知道第一轮聊到了什么病。
+     */
+    private String resolveContext(String sessionId, String knowledge) {
+        if (StringUtils.hasText(knowledge)) {
+            redisTemplate.opsForValue().set(CTX_KEY_PREFIX + sessionId, knowledge, CTX_TTL);
+            return knowledge;
+        }
+        var cached = redisTemplate.opsForValue().get(CTX_KEY_PREFIX + sessionId);
+        return cached != null ? cached.toString() : "";
+    }
+
+    /**
      * 拼装 messages：System Prompt → 知识上下文 → 历史对话 → 当前消息。
      */
     private String doChat(List<AiChatRecord> history, String userMessage, String knowledgeContext) {
+        List<Message> messages = buildMessages(history, userMessage, knowledgeContext);
+
+        var gen = new Generation();
+        var param = GenerationParam.builder()
+                .apiKey(apiKey)
+                .model(model)
+                .messages(messages)
+                .resultFormat(GenerationParam.ResultFormat.MESSAGE)
+                .build();
+
+        try {
+            var result = gen.call(param);
+            return result.getOutput().getChoices().get(0).getMessage().getContent();
+        } catch (NoApiKeyException e) {
+            log.error("DashScope API Key 未配置");
+            throw AiServiceException.authFailed("NoApiKey", "未配置 API Key");
+        } catch (ApiException e) {
+            throw translate(e);
+        } catch (InputRequiredException e) {
+            log.error("DashScope 请求参数不合法", e);
+            throw AiServiceException.upstream(400, "InputRequired", "请求参数不合法");
+        }
+    }
+
+    /**
+     * 拼装 messages（同步与流式共用，避免两条路径的消息结构漂移）。
+     */
+    private List<Message> buildMessages(List<AiChatRecord> history, String userMessage,
+                                        String knowledgeContext) {
         List<Message> messages = new ArrayList<>();
 
         // 1. System prompt
@@ -138,26 +289,7 @@ public class DashScopeClient {
         // 4. 当前用户消息
         messages.add(Message.builder().role(Role.USER.getValue()).content(userMessage).build());
 
-        var gen = new Generation();
-        var param = GenerationParam.builder()
-                .apiKey(apiKey)
-                .model(model)
-                .messages(messages)
-                .resultFormat(GenerationParam.ResultFormat.MESSAGE)
-                .build();
-
-        try {
-            var result = gen.call(param);
-            return result.getOutput().getChoices().get(0).getMessage().getContent();
-        } catch (NoApiKeyException e) {
-            log.error("DashScope API Key 未配置");
-            throw AiServiceException.authFailed("NoApiKey", "未配置 API Key");
-        } catch (ApiException e) {
-            throw translate(e);
-        } catch (InputRequiredException e) {
-            log.error("DashScope 请求参数不合法", e);
-            throw AiServiceException.upstream(400, "InputRequired", "请求参数不合法");
-        }
+        return messages;
     }
 
     /**

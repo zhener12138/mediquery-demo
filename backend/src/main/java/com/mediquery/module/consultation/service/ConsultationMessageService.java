@@ -44,13 +44,18 @@ import java.util.concurrent.ThreadPoolExecutor;
  *       并发一高就是 OOM 或者线程数打满。</li>
  * </ol>
  *
- * <h3>为什么仍然不是真流式</h3>
+ * <h3>真流式（阶段三 3.5）</h3>
  *
- * <p>`DashScopeClient.chatWithHistory` 用的是同步 `gen.call(param)`，一次性拿到
- * 完整回复，然后按 3 个字符切片 + `Thread.sleep(20)` 假装在打字。
- * 这是**已知的设计债**（设计文档 14.4），不是疏忽：换成 SDK 的流式接口需要
- * 改动 `DashScopeClient` 的返回类型、错误处理时机、以及「出错时已经吐了一半」
- * 的语义，属于独立的一次改造。阶段二先保证状态机和数据结构对，流式留给阶段三。
+ * <p>阶段二这里是「同步拿到全文 → 按 3 个字符切片 → {@code Thread.sleep(20)} 假装打字」。
+ * 现在走 {@code DashScopeClient.chatWithHistoryStreaming}，模型吐一片就转发一片，
+ * 首字节延迟从「整段生成完」降到「第一帧到达」。
+ *
+ * <p>改造带来两个同步调用不存在的状态，都在 {@code streamInWorker} 里单独处理了：
+ * <ul>
+ *   <li><b>客户端中途断开</b>：{@code send} 抛异常 → {@link DashScopeClient.ChunkConsumerException}。
+ *       这不是 AI 故障，不能报成「AI 服务不可用」，也不能丢弃已经生成的内容。</li>
+ *   <li><b>半截入库</b>：断开时把已收到的部分存下来，用户重新进来能看到真实生成过的内容。</li>
+ * </ul>
  */
 @Service
 public class ConsultationMessageService {
@@ -62,10 +67,6 @@ public class ConsultationMessageService {
 
     /** 一次对话带多少条历史给模型。 */
     private static final int HISTORY_LIMIT = 20;
-
-    /** 假流式每片多少字符 / 间隔多少毫秒。 */
-    private static final int CHUNK_SIZE = 3;
-    private static final long CHUNK_SLEEP_MS = 20L;
 
     private final ConsultationService consultationService;
     private final DashScopeClient dashScopeClient;
@@ -133,14 +134,23 @@ public class ConsultationMessageService {
 
             var history = recentHistory(patientId, sid);
             var knowledge = knowledgeService.retrieve(message);
-            var reply = dashScopeClient.chatWithHistory(sid, message, history, knowledge);
-            saveRecord(patientId, sid, "assistant", reply);
 
-            for (int i = 0; i < reply.length(); i += CHUNK_SIZE) {
-                int end = Math.min(i + CHUNK_SIZE, reply.length());
-                send(emitter, Map.of("sessionId", sid, "chunk", reply.substring(i, end)));
-                sleepQuietly();
-            }
+            // 真流式：模型吐一片就转发一片，不再等全文。
+            // onChunk 里 send 失败（客户端断开）会抛异常，被 chatWithHistoryStreaming
+            // 包成 ChunkConsumerException 透出 —— 下面是单独的 catch 分支，不能当成 AI 故障。
+            String reply = dashScopeClient.chatWithHistoryStreaming(
+                    sid, message, history, knowledge,
+                    piece -> {
+                        try {
+                            send(emitter, Map.of("sessionId", sid, "chunk", piece));
+                        } catch (Exception e) {
+                            throw new IllegalStateException(e);
+                        }
+                    });
+
+            // 空回复也要入库：用户刷新后应该看到「这条问过、AI 没答」，
+            // 而不是一段凭空消失的对话。
+            saveRecord(patientId, sid, "assistant", reply == null ? "" : reply);
 
             // meta 事件：severity 由小结阶段最终确定，这里先给一个「未知」占位，
             // 让前端拿到统一的事件序列，不必为「有没有 meta」写两套解析。
@@ -153,6 +163,18 @@ public class ConsultationMessageService {
 
             send(emitter, Map.of("type", "end", "summarizing", false));
             emitter.complete();
+        } catch (DashScopeClient.ChunkConsumerException e) {
+            // 客户端断开：不是 AI 的错，也不该报 error 事件（没人收）。
+            // 半截回复仍然入库 —— 用户重新进来能看到已经生成的部分，
+            // 而不是一个空洞的会话。
+            log.info("SSE 推送中断（客户端可能已断开）session={} partialLen={}",
+                    sid, e.getPartialText().length());
+            saveRecord(patientId, sid, "assistant", e.getPartialText());
+            try {
+                emitter.complete();
+            } catch (Exception ignored) {
+                // 连接已断，complete 失败是正常的
+            }
         } catch (AiServiceException e) {
             log.warn("AI 服务不可用 consultationSession={} code={} msg={}",
                     sid, e.getUpstreamCode(), e.getMessage());
@@ -209,16 +231,6 @@ public class ConsultationMessageService {
         } catch (Exception sendFail) {
             log.warn("下发错误事件失败", sendFail);
             emitter.completeWithError(sendFail);
-        }
-    }
-
-    private static void sleepQuietly() {
-        try {
-            Thread.sleep(CHUNK_SLEEP_MS);
-        } catch (InterruptedException e) {
-            // 客户端断开会导致 send 抛异常从而提前退出；这里的 sleep 被打断说明线程池在关停，
-            // 恢复中断标记让上层决定，不吞掉
-            Thread.currentThread().interrupt();
         }
     }
 
