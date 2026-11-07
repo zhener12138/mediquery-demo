@@ -33,14 +33,46 @@ public class SummaryVO {
     /** 一句话概括的患者主诉。 */
     private String chiefComplaint;
 
+    /**
+     * 从对话里提取到的症状标签，如「干咳」「低烧」「夜间加重」。最多 6 个。
+     *
+     * <p>单独一个字段而不是塞进 chiefComplaint，是因为前端要拿它做标签渲染：
+     * 一张问诊小结卡片上，一眼能看到几个症状词，比读一段描述快得多。
+     */
+    private List<String> symptoms;
+
+    /**
+     * 病程时长，如「约 3 天」「超过两周」。模型判断不出来时是空串。
+     *
+     * <p>这是分诊里最关键的变量之一：同样一个咳嗽，三天和三个月完全是两回事。
+     */
+    private String duration;
+
     /** 可能的病因或疾病方向，最多 3 条。 */
     private List<String> possibleDirections;
 
     /** 建议挂号的科室，最多 2 个。 */
     private List<String> suggestedDepartments;
 
+    /**
+     * 为什么建议这些科室。一句话。
+     *
+     * <p>光给科室名，用户会怀疑「它凭什么这么说」。给出理由，
+     * 即使理由不完美，用户也能自己判断要不要采纳 —— 这是把决定权还给用户。
+     */
+    private String departmentReason;
+
     /** 生活或用药方面的建议，最多 3 条。 */
     private List<String> medicationHints;
+
+    /**
+     * 居家护理的具体做法，最多 4 条。
+     *
+     * <p>和 {@code medicationHints} 分开：用药建议必须谨慎（不能给剂量），
+     * 而护理建议（多喝水、抬高患肢、保持通风）相对安全且更有可操作性。
+     * 混在一起会导致要么护理部分过于保守，要么用药部分过于具体。
+     */
+    private List<String> careAdvice;
 
     /** 严重度：0 轻微 / 1 中度 / 2 高度。 */
     private Integer severity;
@@ -70,9 +102,13 @@ public class SummaryVO {
         SummaryVO vo = new SummaryVO();
         vo.setChiefComplaint(chiefComplaint == null || chiefComplaint.isBlank()
                 ? "（未填写主诉）" : chiefComplaint);
+        vo.setSymptoms(new ArrayList<>());
+        vo.setDuration("");
         vo.setPossibleDirections(new ArrayList<>());
         vo.setSuggestedDepartments(new ArrayList<>());
+        vo.setDepartmentReason("");
         vo.setMedicationHints(new ArrayList<>());
+        vo.setCareAdvice(new ArrayList<>());
         vo.setSeverity(0);
         vo.setSeverityReason("未能从对话中提取有效信息");
         vo.setRedFlags(new ArrayList<>());
@@ -83,14 +119,26 @@ public class SummaryVO {
     public String getChiefComplaint() { return chiefComplaint; }
     public void setChiefComplaint(String chiefComplaint) { this.chiefComplaint = chiefComplaint; }
 
+    public List<String> getSymptoms() { return symptoms; }
+    public void setSymptoms(List<String> symptoms) { this.symptoms = symptoms; }
+
+    public String getDuration() { return duration; }
+    public void setDuration(String duration) { this.duration = duration; }
+
     public List<String> getPossibleDirections() { return possibleDirections; }
     public void setPossibleDirections(List<String> possibleDirections) { this.possibleDirections = possibleDirections; }
 
     public List<String> getSuggestedDepartments() { return suggestedDepartments; }
     public void setSuggestedDepartments(List<String> suggestedDepartments) { this.suggestedDepartments = suggestedDepartments; }
 
+    public String getDepartmentReason() { return departmentReason; }
+    public void setDepartmentReason(String departmentReason) { this.departmentReason = departmentReason; }
+
     public List<String> getMedicationHints() { return medicationHints; }
     public void setMedicationHints(List<String> medicationHints) { this.medicationHints = medicationHints; }
+
+    public List<String> getCareAdvice() { return careAdvice; }
+    public void setCareAdvice(List<String> careAdvice) { this.careAdvice = careAdvice; }
 
     public Integer getSeverity() { return severity; }
     public void setSeverity(Integer severity) { this.severity = severity; }

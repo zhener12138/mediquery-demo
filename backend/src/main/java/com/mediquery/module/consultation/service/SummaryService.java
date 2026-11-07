@@ -53,9 +53,13 @@ public class SummaryService {
             JSON 结构必须是：
             {
               "chiefComplaint": "一句话概括患者主诉",
+              "symptoms": ["从对话里提取到的具体症状，最多6个，每个不超过10个字"],
+              "duration": "病程时长，如'约3天'或'超过两周'。对话里没提到就填空字符串",
               "possibleDirections": ["可能的病因或疾病方向，最多3条"],
               "suggestedDepartments": ["建议挂号的科室，最多2个"],
-              "medicationHints": ["生活或用药方面的建议，最多3条"],
+              "departmentReason": "为什么建议这些科室，一句话",
+              "medicationHints": ["用药方面的建议，最多3条。不给具体剂量和疗程"],
+              "careAdvice": ["居家护理的具体做法，最多4条，要可操作"],
               "severity": 0或1或2,
               "severityReason": "给出该严重度的简短理由",
               "redFlags": ["需要立即就医的危险信号，没有就空数组"]
@@ -68,6 +72,13 @@ public class SummaryService {
                   意识改变、剧烈胸痛、大出血、剧烈腹痛、抽搐等）
 
             如果对话信息不足以判断，severity 必须是 0。
+
+            字段要求：
+            - symptoms 只写患者**明确说过**的症状，不要写你推断出来的。
+            - medicationHints 绝不给剂量、频次、疗程。可以说「可考虑使用缓解发热的药物，
+              具体请咨询药师」。
+            - careAdvice 要具体到「怎么做」，不要写「注意休息」这种等于没说的话。
+              写「这两天尽量少说话，用温盐水漱口，每天 3 次」才有用。
 
             对话记录：
             %s
@@ -205,11 +216,23 @@ public class SummaryService {
             if (vo.getChiefComplaint() == null || vo.getChiefComplaint().isBlank()) {
                 vo.setChiefComplaint(fallbackComplaint);
             }
+            if (vo.getSymptoms() == null) vo.setSymptoms(List.of());
+            if (vo.getDuration() == null) vo.setDuration("");
             if (vo.getPossibleDirections() == null) vo.setPossibleDirections(List.of());
             if (vo.getSuggestedDepartments() == null) vo.setSuggestedDepartments(List.of());
+            if (vo.getDepartmentReason() == null) vo.setDepartmentReason("");
             if (vo.getMedicationHints() == null) vo.setMedicationHints(List.of());
+            if (vo.getCareAdvice() == null) vo.setCareAdvice(List.of());
             if (vo.getRedFlags() == null) vo.setRedFlags(List.of());
             if (vo.getSeverityReason() == null) vo.setSeverityReason("");
+
+            // 数量上限兜底：提示词里写了「最多 N 条」，但模型偶尔会多给。
+            // 前端按固定条数排版，多出来的会撑破卡片，所以在后端截断一次。
+            vo.setSymptoms(capList(vo.getSymptoms(), 6));
+            vo.setPossibleDirections(capList(vo.getPossibleDirections(), 3));
+            vo.setSuggestedDepartments(capList(vo.getSuggestedDepartments(), 2));
+            vo.setMedicationHints(capList(vo.getMedicationHints(), 3));
+            vo.setCareAdvice(capList(vo.getCareAdvice(), 4));
 
             // 严重度越界归一化
             vo.setSeverity(Severity.normalize(vo.getSeverity()));
@@ -222,9 +245,20 @@ public class SummaryService {
         }
     }
 
+    /**
+     * 截断列表到指定长度。
+     *
+     * <p>用 subList 的拷贝而不是原列表：{@code List.of()} 返回的是不可变列表，
+     * 直接改会抛 UnsupportedOperationException；而 {@code Arrays.asList} 返回的
+     * subList 是视图，原列表后续被改动会连带变化。
+     */
+    private static List<String> capList(List<String> src, int max) {
+        if (src == null || src.isEmpty()) return List.of();
+        return src.size() <= max ? src : List.copyOf(src.subList(0, max));
+    }
+
     /** 剥掉 markdown 代码块标记（```json ... ```）。 */
-    private static String stripCodeFence(String s) {
-        String t = s.trim();
+    private static String stripCodeFence(String s) {        String t = s.trim();
         if (!t.startsWith("```")) return t;
         int firstNewline = t.indexOf('\n');
         if (firstNewline < 0) return t;

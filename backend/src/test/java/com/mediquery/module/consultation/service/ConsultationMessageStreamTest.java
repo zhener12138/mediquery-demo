@@ -64,7 +64,8 @@ class ConsultationMessageStreamTest {
 
         service = new ConsultationMessageService(
                 consultationService, dashScopeClient, knowledgeService,
-                chatRecordMapper, new ObjectMapper(), executor);
+                chatRecordMapper, new ObjectMapper(), executor,
+                new com.mediquery.module.consultation.triage.TriageRuleEngine());
 
         Consultation c = new Consultation();
         c.setId(1);

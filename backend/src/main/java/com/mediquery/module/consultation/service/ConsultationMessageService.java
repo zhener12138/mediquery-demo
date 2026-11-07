@@ -10,6 +10,8 @@ import com.mediquery.integration.ai.KnowledgeRetrievalService;
 import com.mediquery.module.consultation.entity.AiChatRecord;
 import com.mediquery.module.consultation.mapper.AiChatRecordMapper;
 import com.mediquery.module.consultation.entity.Consultation;
+import com.mediquery.module.consultation.triage.TriageResult;
+import com.mediquery.module.consultation.triage.TriageRuleEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -74,19 +76,22 @@ public class ConsultationMessageService {
     private final AiChatRecordMapper chatRecordMapper;
     private final ObjectMapper objectMapper;
     private final ThreadPoolExecutor sseExecutor;
+    private final TriageRuleEngine triageRuleEngine;
 
     public ConsultationMessageService(ConsultationService consultationService,
                                       DashScopeClient dashScopeClient,
                                       KnowledgeRetrievalService knowledgeService,
                                       AiChatRecordMapper chatRecordMapper,
                                       ObjectMapper objectMapper,
-                                      @Qualifier(AsyncConfig.SSE_EXECUTOR) ThreadPoolExecutor sseExecutor) {
+                                      @Qualifier(AsyncConfig.SSE_EXECUTOR) ThreadPoolExecutor sseExecutor,
+                                      TriageRuleEngine triageRuleEngine) {
         this.consultationService = consultationService;
         this.dashScopeClient = dashScopeClient;
         this.knowledgeService = knowledgeService;
         this.chatRecordMapper = chatRecordMapper;
         this.objectMapper = objectMapper;
         this.sseExecutor = sseExecutor;
+        this.triageRuleEngine = triageRuleEngine;
     }
 
     /**
@@ -108,6 +113,10 @@ public class ConsultationMessageService {
         Consultation c = consultationService.requireActive(consultationId, patientId);
         String sid = c.getSessionId();
 
+        // 预筛放在这里同步做：它是纯内存计算（微秒级），不需要数据库也不需要网络，
+        // 但结果决定了第一帧要不要报高危。丢到线程池里做只会让高危提示晚到几毫秒。
+        TriageResult triage = triageRuleEngine.triage(content);
+
         saveRecord(patientId, sid, "user", content.trim());
         consultationService.touch(consultationId);
 
@@ -115,7 +124,7 @@ public class ConsultationMessageService {
         var secCtx = SecurityContextHolder.getContext();
 
         try {
-            sseExecutor.execute(() -> streamInWorker(emitter, secCtx, patientId, sid, content));
+            sseExecutor.execute(() -> streamInWorker(emitter, secCtx, patientId, sid, content, triage));
         } catch (RejectedExecutionException e) {
             // 线程池满：此时消息已经存了，但回答不会来。
             // 存了用户消息却回不了，比什么都不存更糟 —— 用户刷新会看到自己孤零零一句话。
@@ -126,14 +135,24 @@ public class ConsultationMessageService {
     }
 
     private void streamInWorker(SseEmitter emitter, SecurityContext secCtx,
-                                Integer patientId, String sid, String message) {
+                                Integer patientId, String sid, String message, TriageResult triage) {
         SecurityContextHolder.setContext(secCtx);
         try {
             // start 事件先发：把 HTTP 响应头冲出去，避免异步分派被安全过滤器二次拦截
-            send(emitter, Map.of("type", "start", "sessionId", sid));
+            // 同时把预筛结论第一时间送到前端 —— 高危提示要在第一个字吐出来之前就出现，
+            // 不能让用户为了看到「快去医院」而先读完整段 AI 回复。
+            var start = new HashMap<String, Object>();
+            start.put("type", "start");
+            start.put("sessionId", sid);
+            start.put("triageSeverity", triage.severity());
+            start.put("redFlags", triage.flags());
+            start.put("suggestDept", triage.departments());
+            start.put("advice", triage.advice());
+            send(emitter, start);
 
             var history = recentHistory(patientId, sid);
-            var knowledge = knowledgeService.retrieve(message);
+            // 预筛指令拼在知识库前面：它是硬约束，不该被后面的资料稀释。
+            var knowledge = triage.toPromptPrefix() + knowledgeService.retrieve(message);
 
             // 真流式：模型吐一片就转发一片，不再等全文。
             // onChunk 里 send 失败（客户端断开）会抛异常，被 chatWithHistoryStreaming
@@ -152,12 +171,14 @@ public class ConsultationMessageService {
             // 而不是一段凭空消失的对话。
             saveRecord(patientId, sid, "assistant", reply == null ? "" : reply);
 
-            // meta 事件：severity 由小结阶段最终确定，这里先给一个「未知」占位，
-            // 让前端拿到统一的事件序列，不必为「有没有 meta」写两套解析。
+            // meta 事件：severity 是「整段问诊结束后的回顾性判断」，这里仍然是 null，
+            // 让前端不必为「有没有 meta」写两套解析。而本轮预筛的结论放在 triageSeverity，
+            // 两者字段名不同、含义不同，前端也不会误把预筛当成最终结论。
             var meta = new HashMap<String, Object>();
             meta.put("type", "meta");
             meta.put("severity", null);
-            meta.put("suggestDept", null);
+            meta.put("triageSeverity", triage.severity());
+            meta.put("suggestDept", triage.departments());
             meta.put("note", "严重度在问诊完结、生成小结后确定");
             send(emitter, meta);
 
