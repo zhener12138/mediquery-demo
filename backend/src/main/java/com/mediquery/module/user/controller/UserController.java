@@ -9,7 +9,6 @@ import com.mediquery.module.user.vo.UserVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import com.mediquery.module.operationlog.aspect.AuditLog;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,9 +16,13 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.Map;
 
 /**
- * 用户控制器：个人信息/修改密码/文件上传 + 管理员用户管理(列表/启用禁用)
+ * 用户控制器：个人信息 / 修改密码 / 文件上传。
+ *
+ * <p>重构后不再提供管理员用户管理：本项目只剩在线问诊一条主线，
+ * 后台能做的审计动作已经在 {@code /api/v1/admin/operation-logs} 里，
+ * 用户列表与启用禁用属于另一个产品的问题，删掉比留着一半更好。
  */
-@Tag(name = "用户管理")
+@Tag(name = "用户")
 @RestController
 @RequestMapping("/api/v1")
 public class UserController {
@@ -75,22 +78,4 @@ public class UserController {
     @Operation(summary = "上传文件")
     @PostMapping("/files/upload")
     public Result<String> upload(@RequestParam("file") MultipartFile file) { return Result.success(ossClient.upload(file)); }
-
-    @Operation(summary = "用户列表(管理员)")
-    @GetMapping("/admin/users")
-    @PreAuthorize("hasRole('ADMIN')")
-    public Result<java.util.List<UserVO>> listUsers() {
-        var users = userMapper.selectList(null);
-        return Result.success(users.stream().map(UserVO::from).toList());
-    }
-
-    @Operation(summary = "启用/禁用用户")
-    @PutMapping("/admin/users/{id}/status")
-    @AuditLog(value = "启用/禁用用户", module = "用户管理")
-    @PreAuthorize("hasRole('ADMIN')")
-    public Result<?> toggleUserStatus(@PathVariable Integer id, @RequestBody Map<String, Integer> body) {
-        var user = userMapper.selectById(id);
-        if (user != null) { user.setStatus(body.get("status")); userMapper.updateById(user); }
-        return Result.success();
-    }
 }

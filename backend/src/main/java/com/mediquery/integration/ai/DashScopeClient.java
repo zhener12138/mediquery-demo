@@ -9,7 +9,7 @@ import com.alibaba.dashscope.exception.ApiException;
 import com.alibaba.dashscope.exception.InputRequiredException;
 import com.alibaba.dashscope.exception.NoApiKeyException;
 import com.mediquery.common.exception.AiServiceException;
-import com.mediquery.module.ai_doctor.entity.AiChatRecord;
+import com.mediquery.module.consultation.entity.AiChatRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;

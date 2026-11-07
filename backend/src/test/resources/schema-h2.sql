@@ -100,38 +100,6 @@ CREATE TABLE `illness_medicine_rel` (
 CREATE INDEX `idx_illness_id` ON `illness_medicine_rel` (`illness_id`);
 CREATE INDEX `idx_medicine_id` ON `illness_medicine_rel` (`medicine_id`);
 
-DROP TABLE IF EXISTS `feedback`;
-CREATE TABLE `feedback` (
-    `id`          INT          NOT NULL AUTO_INCREMENT,
-    `name`        VARCHAR(100) NOT NULL,
-    `email`       VARCHAR(100) DEFAULT NULL,
-    `title`       VARCHAR(200) NOT NULL,
-    `content`     TEXT         NOT NULL,
-    `status`      TINYINT      NOT NULL DEFAULT 0,
-    `admin_reply` TEXT         DEFAULT NULL,
-    `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    `update_time` DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`)
-);
-
-DROP TABLE IF EXISTS `sys_doctor`;
-CREATE TABLE `sys_doctor` (
-    `id`          INT          NOT NULL AUTO_INCREMENT,
-    `name`        VARCHAR(100) NOT NULL,
-    `title`       VARCHAR(100) DEFAULT NULL,
-    `department`  VARCHAR(100) DEFAULT NULL,
-    `hospital`    VARCHAR(200) DEFAULT NULL,
-    `avatar_url`  VARCHAR(500) DEFAULT NULL,
-    `specialty`   TEXT         DEFAULT NULL,
-    `description` TEXT         DEFAULT NULL,
-    `phone`       VARCHAR(20)  DEFAULT NULL,
-    `status`      TINYINT      NOT NULL DEFAULT 1,
-    `sort_order`  INT          DEFAULT 0,
-    `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    `update_time` DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`)
-);
-
 DROP TABLE IF EXISTS `ai_chat_record`;
 CREATE TABLE `ai_chat_record` (
     `id`          INT         NOT NULL AUTO_INCREMENT,

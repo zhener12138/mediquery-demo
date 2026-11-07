@@ -1,4 +1,4 @@
-package com.mediquery.module.ai_doctor.entity;
+package com.mediquery.module.consultation.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;

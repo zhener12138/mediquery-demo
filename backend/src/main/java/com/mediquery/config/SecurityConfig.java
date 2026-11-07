@@ -57,10 +57,7 @@ public class SecurityConfig {
                 .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                 // Public endpoints
                 .requestMatchers("/api/v1/auth/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/illnesses/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/medicines/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/doctors/**").permitAll()
-                // 首页那几个公开计数，不含任何后台数据
+                // 登录页/首页那块公开计数，不含任何患者数据
                 .requestMatchers(HttpMethod.GET, "/api/v1/stats").permitAll()
                 // 容器探针。必须放行：Docker healthcheck 与负载均衡探活都不带 token，
                 // 被 401 拦掉的话容器会一直显示 unhealthy。
@@ -70,20 +67,9 @@ public class SecurityConfig {
                 // 其余 actuator 端点（即便将来误开）一律要认证，不给"顺手开了就裸奔"的机会
                 .requestMatchers("/actuator/**").authenticated()
                 .requestMatchers("/api/v1/files/upload").authenticated()
-                .requestMatchers("/api/v1/feedbacks").authenticated()
                 // Swagger/Knife4j
                 .requestMatchers("/doc.html", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/webjars/**", "/swagger-resources/**").permitAll()
-                // Admin only
-                .requestMatchers(HttpMethod.POST, "/api/v1/illnesses/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.PUT, "/api/v1/illnesses/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.DELETE, "/api/v1/illnesses/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.POST, "/api/v1/medicines/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.PUT, "/api/v1/medicines/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.DELETE, "/api/v1/medicines/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.POST, "/api/v1/doctors/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.PUT, "/api/v1/doctors/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.DELETE, "/api/v1/doctors/**").hasRole("ADMIN")
-                .requestMatchers("/api/v1/dashboard/**").hasRole("ADMIN")
+                // Admin only：审计日志是唯一保留的后台能力，问诊数据本身患者侧自助
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 // Everything else requires authentication
                 .anyRequest().authenticated()

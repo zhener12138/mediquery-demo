@@ -107,47 +107,11 @@ CREATE TABLE `illness_medicine_rel` (
     KEY `idx_medicine_id` (`medicine_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='疾病药品关联表';
 
--- 说明：原 search_history（搜索历史）与 user_favorite（用户收藏）两张表已删除。
--- 它们从建库起就没有对应的实体类、Mapper、Service 和接口，属于纯死表，
--- 留着只会让接手的人以为「有这功能，只是没做完」。真要做历史/收藏时按新需求重建。
-
--- ============================================================
--- 意见反馈表
--- ============================================================
-DROP TABLE IF EXISTS `feedback`;
-CREATE TABLE `feedback` (
-    `id`          INT          NOT NULL AUTO_INCREMENT COMMENT '反馈ID',
-    `name`        VARCHAR(100) NOT NULL COMMENT '反馈人姓名',
-    `email`       VARCHAR(100) DEFAULT NULL COMMENT '反馈人邮箱',
-    `title`       VARCHAR(200) NOT NULL COMMENT '反馈标题',
-    `content`     TEXT         NOT NULL COMMENT '反馈内容',
-    `status`      TINYINT      NOT NULL DEFAULT 0 COMMENT '状态: 0-待处理, 1-已处理',
-    `admin_reply` TEXT         DEFAULT NULL COMMENT '管理员回复',
-    `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    `update_time` DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='意见反馈表';
-
--- ============================================================
--- 医生信息表 (版本A)
--- ============================================================
-DROP TABLE IF EXISTS `sys_doctor`;
-CREATE TABLE `sys_doctor` (
-    `id`          INT          NOT NULL AUTO_INCREMENT COMMENT '医生ID',
-    `name`        VARCHAR(100) NOT NULL COMMENT '医生姓名',
-    `title`       VARCHAR(100) DEFAULT NULL COMMENT '职称',
-    `department`  VARCHAR(100) DEFAULT NULL COMMENT '科室',
-    `hospital`    VARCHAR(200) DEFAULT NULL COMMENT '所属医院',
-    `avatar_url`  VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
-    `specialty`   TEXT         DEFAULT NULL COMMENT '擅长领域',
-    `description` TEXT         DEFAULT NULL COMMENT '简介',
-    `phone`       VARCHAR(20)  DEFAULT NULL COMMENT '联系电话',
-    `status`      TINYINT      NOT NULL DEFAULT 1 COMMENT '状态: 0-停诊, 1-在岗',
-    `sort_order`  INT          DEFAULT 0 COMMENT '排序',
-    `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    `update_time` DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='医生信息表';
+-- 说明：下列表在「只保留在线问诊」重构中删除，DDL 与种子数据一并移除。
+--   search_history / user_favorite —— 从建库起就没有实体、Mapper、Service，纯死表；
+--   feedback —— 意见反馈模块整体下线，不属于问诊主线；
+--   sys_doctor —— 本项目是纯 AI 问诊、不做人工接诊，医生表没有任何消费方。
+-- 真要做这些能力时按新需求重建，不要从历史版本里捞半成品。
 
 -- ============================================================
 -- AI对话记录表
@@ -275,14 +239,3 @@ INSERT INTO `illness_medicine_rel` (`illness_id`, `medicine_id`) VALUES
 (7, 6),                     -- 牙周炎 -> 甲硝唑
 (8, 4),                     -- 胃溃疡 -> 三九胃泰
 (10, 5);                    -- 湿疹 -> 999皮炎平
-
--- 医生数据
-INSERT INTO `sys_doctor` (`id`, `name`, `title`, `department`, `hospital`, `specialty`, `description`, `status`, `sort_order`) VALUES
-(1, '张明华', '主任医师', '内科', '北京协和医院', '心血管疾病、高血压、冠心病、心功能不全的诊治，对疑难危重病例有丰富经验。', '从事内科临床工作30余年，在心血管疾病的预防、诊断和治疗方面积累了丰富经验。', 1, 1),
-(2, '李丽萍', '副主任医师', '儿科', '北京儿童医院', '儿童呼吸系统疾病、消化系统疾病、儿童生长发育评估与指导。', '毕业于北京大学医学部，从事儿科临床工作15年，对儿童常见病有独到见解。', 1, 2),
-(3, '王建国', '主任医师', '皮肤科', '上海华山医院', '湿疹、银屑病、痤疮、荨麻疹等常见皮肤病的诊治，皮肤激光美容。', '在皮肤科领域工作20余年，对难治性皮肤病有深入研究，发表SCI论文30余篇。', 1, 3),
-(4, '赵雪琴', '主治医师', '口腔科', '四川大学华西口腔医院', '牙体牙髓病、牙周病、口腔黏膜病的诊治，前牙美学修复。', '华西口腔医学院博士毕业，擅长牙周病的系统治疗和口腔健康管理。', 1, 4),
-(5, '陈志强', '主任医师', '外科', '中山大学附属第一医院', '肝、胆、胰外科疾病的手术治疗，尤其擅长腹腔镜微创手术。', '从事普外科工作25年，完成各类手术超过5000例，具有丰富的临床经验。', 1, 5),
-(6, '刘芳', '副主任医师', '妇产科', '复旦大学附属妇产科医院', '妇科肿瘤、内分泌疾病、不孕不育症的诊治，高危妊娠管理。', '在妇产科领域工作18年，对妇科恶性肿瘤的早期筛查和综合治疗有丰富经验。', 1, 6),
-(7, '孙伟', '主治医师', '耳鼻喉科', '首都医科大学附属北京同仁医院', '耳鼻咽喉科常见病、多发病的诊治，尤其擅长鼻窦炎、中耳炎的微创手术。', '从事耳鼻喉科临床工作10年，对过敏性鼻炎的综合治疗有深入实践。', 1, 7),
-(8, '周红梅', '主任医师', '肝病科', '上海瑞金医院', '病毒性肝炎、脂肪肝、肝硬化、肝癌的诊治，肝病预防与健康管理。', '在肝病领域从业22年，参与多项国家级肝病研究项目，临床经验丰富。', 1, 8);
