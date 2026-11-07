@@ -122,13 +122,22 @@
 
           <!-- 实时分诊横幅：本轮消息里检测到危险信号，先于 AI 回复出现 -->
           <transition name="slide">
-            <div v-if="liveTriage && liveTriage.severity === 2" class="triage-banner">
-              <el-icon :size="18" class="triage-icon"><WarningFilled /></el-icon>
+            <div
+              v-if="liveTriage && liveTriage.severity >= 1"
+              :class="['triage-banner', liveTriage.severity === 2 ? 'urgent' : 'watch']"
+            >
+              <el-icon :size="18" class="triage-icon">
+                <WarningFilled v-if="liveTriage.severity === 2" />
+                <InfoFilled v-else />
+              </el-icon>
               <div class="triage-body">
-                <strong>这可能不是能等的事</strong>
+                <strong>{{ liveTriage.severity === 2 ? '这可能不是能等的事' : '建议近期去医院看一下' }}</strong>
                 <p>{{ liveTriage.advice }}</p>
                 <p v-if="liveTriage.flags.length" class="triage-flags">
                   检测到：{{ liveTriage.flags.join('、') }}
+                </p>
+                <p v-if="liveTriage.departments.length" class="triage-flags">
+                  可以先挂：{{ liveTriage.departments.join(' / ') }}
                 </p>
               </div>
             </div>
@@ -346,6 +355,11 @@
                 @click="send"
               >发送</el-button>
             </div>
+            <!-- 问诊全程常驻。小结里的那条只在终结后出现，而「这不能替代医生」
+                 这句话恰恰在用户正拿它当医生用的时候最该被看到。 -->
+            <p class="chat-disclaimer">
+              AI 不能诊断疾病，也不能开药。它的作用是帮你把症状理清楚、判断该挂哪个科。紧急情况请直接拨打 120。
+            </p>
           </div>
         </template>
       </main>
@@ -364,6 +378,7 @@ import {
   Loading,
   Plus,
   WarningFilled,
+  InfoFilled,
   Clock,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
@@ -1054,15 +1069,25 @@ onUnmounted(stopPolling)
   gap: 11px;
   margin: 12px 18px 0;
   padding: 13px 15px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  /* 危险度决定配色。中度不能沿用红色的强度 —— 红色只留给真该打 120 的情况，
+     否则每句话都红一次，红色就贬值了。 */
   background: #fef0f0;
   border: 1px solid #fde2e2;
   border-left: 3px solid #f56c6c;
-  border-radius: 9px;
-  flex-shrink: 0;
+}
+.triage-banner.watch {
+  background: #fdf6ec;
+  border-color: #faecd8;
+  border-left-color: #e6a23c;
 }
 .triage-icon { color: #f56c6c; flex-shrink: 0; margin-top: 1px; }
+.triage-banner.watch .triage-icon { color: #e6a23c; }
 .triage-body strong { font-size: 13.5px; color: #c0392b; display: block; margin-bottom: 5px; }
+.triage-banner.watch .triage-body strong { color: #b88230; }
 .triage-body p { font-size: 12.5px; line-height: 1.7; color: #a83232; }
+.triage-banner.watch .triage-body p { color: #8a6d3b; }
 .triage-flags { margin-top: 5px; opacity: .8; }
 
 .slide-enter-active, .slide-leave-active { transition: all .25s ease; }
@@ -1224,6 +1249,13 @@ onUnmounted(stopPolling)
   align-items: center;
   justify-content: space-between;
   margin-top: 9px;
+}
+.chat-disclaimer {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.65;
+  color: #b6b9c0;
+  text-align: center;
 }
 
 @media (max-width: 900px) {
