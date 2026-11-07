@@ -7,6 +7,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -114,6 +115,57 @@ class TriageRuleEngineTest {
         assertTrue(r.flags().isEmpty());
         assertTrue(r.departments().isEmpty());
         assertEquals("", r.advice());
+    }
+
+    // ────────────────────── 否定表达 ──────────────────────
+
+    @ParameterizedTest(name = "\"{0}\" 是在否认，不该报高危")
+    @DisplayName("患者明确否认危险信号时不能弹急救提示")
+    @ValueSource(strings = {
+            "没有胸痛，就是有点咳嗽",
+            "我没有喘不上气，只是嗓子痒",
+            "否认呕吐，也没吐血",
+            "不发烧，也不头晕",
+            "没晕倒过，意识一直清楚"
+    })
+    void negatedHighRiskIsNotFlagged(String message) {
+        var r = engine.triage(message);
+
+        assertNotEquals(2, r.severity(),
+                "患者说的是『没有』这个症状，报成高危等于把阴性陈述读成了阳性");
+        assertFalse(r.hasRedFlag(), "否认的症状不该出现在危险信号列表里");
+    }
+
+    @ParameterizedTest(name = "\"{0}\" 是双否定，仍然要报")
+    @DisplayName("双否定是强调风险，不能被当成否认")
+    @ValueSource(strings = {
+            "不排除胸痛",
+            "无法排除心梗，胸口疼得厉害",
+            "不能排除喘不上气是心脏引起的"
+    })
+    void doubleNegationStillFlags(String message) {
+        var r = engine.triage(message);
+
+        assertEquals(2, r.severity(),
+                "『不排除』的意思是还没排除，属于该报警的情形，不能被『不』字静音");
+        assertTrue(r.hasRedFlag());
+    }
+
+    @Test
+    @DisplayName("同一句话里否认一次、承认一次，以承认为准")
+    void admittedAfterNegationStillFlags() {
+        var r = engine.triage("早上没有胸痛，但是刚才突然胸口痛得厉害");
+
+        assertEquals(2, r.severity(),
+                "前半句否认、后半句承认，不能因为前面出现了『没有』就整句静音");
+    }
+
+    @Test
+    @DisplayName("否定不跨句号，前一句的『没有』管不到后一句")
+    void negationDoesNotCrossSentence() {
+        var r = engine.triage("我最近没精神。今天突然胸痛");
+
+        assertEquals(2, r.severity(), "『没精神』里的『没』不该把后面独立的胸痛否掉");
     }
 
     // ────────────────────── 科室匹配 ──────────────────────
