@@ -73,7 +73,8 @@ class ConsultationMessageStreamTest {
         c.setSessionId(SESSION_ID);
         c.setStatus(0);
         when(consultationService.requireActive(anyInt(), anyInt())).thenReturn(c);
-        when(knowledgeService.retrieve(anyString())).thenReturn("");
+        when(knowledgeService.retrieveWithSources(anyString()))
+                .thenReturn(new KnowledgeRetrievalService.Retrieved("", List.of()));
 
         // 让 saveRecord 拿到的主键有值，便于断言
         when(chatRecordMapper.insert(any(AiChatRecord.class))).thenReturn(1);
@@ -107,6 +108,33 @@ class ConsultationMessageStreamTest {
         assertThat(saved.get(0).getContent()).isEqualTo("我头疼");
         assertThat(saved.get(1).getRole()).isEqualTo("assistant");
         assertThat(saved.get(1).getContent()).isEqualTo("你好，我是智能医生");
+
+        executor.shutdownNow();
+    }
+
+    @Test
+    @DisplayName("检索命中时：sources 随 start 事件带出，流式链路不炸、回复完整入库")
+    void retrievalWithSourcesDoesNotBreakStreaming() {
+        when(knowledgeService.retrieveWithSources(anyString())).thenReturn(
+                new KnowledgeRetrievalService.Retrieved(
+                        "【参考知识库 · 疾病】\n## 疾病：偏头痛\n",
+                        List.of("偏头痛", "布洛芬")));
+
+        when(dashScopeClient.chatWithHistoryStreaming(
+                eq(SESSION_ID), eq("偏头痛该怎么办"), any(), any(), any()))
+                .thenAnswer(inv -> {
+                    @SuppressWarnings("unchecked")
+                    var onChunk = (java.util.function.Consumer<String>) inv.getArgument(4);
+                    onChunk.accept("偏头痛常见诱因包括……");
+                    return "偏头痛常见诱因包括……";
+                });
+
+        SseEmitter emitter = service.stream(1, PATIENT_ID, "偏头痛该怎么办");
+        assertThat(emitter).isNotNull();
+
+        ArgumentCaptor<AiChatRecord> captor = ArgumentCaptor.forClass(AiChatRecord.class);
+        verify(chatRecordMapper, timeout(3000).times(2)).insert(captor.capture());
+        assertThat(captor.getAllValues().get(1).getContent()).isEqualTo("偏头痛常见诱因包括……");
 
         executor.shutdownNow();
     }

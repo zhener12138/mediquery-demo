@@ -148,11 +148,16 @@ public class ConsultationMessageService {
             start.put("redFlags", triage.flags());
             start.put("suggestDept", triage.departments());
             start.put("advice", triage.advice());
-            send(emitter, start);
 
             var history = recentHistory(patientId, sid);
             // 预筛指令拼在知识库前面：它是硬约束，不该被后面的资料稀释。
-            var knowledge = triage.toPromptPrefix() + knowledgeService.retrieve(message);
+            // 命中的条目名一起带出：AI 说「考虑病毒性感冒」时，用户能看到这句有出处，
+            // 而不是一段无法核实的黑盒回答。来源标注放在 start 事件里，
+            // 因为它不依赖模型 —— 检索命中那一刻就确定了，比等第一个 chunk 更早。
+            var retrieved = knowledgeService.retrieveWithSources(message);
+            var knowledge = triage.toPromptPrefix() + retrieved.context();
+            start.put("sources", retrieved.sources());
+            send(emitter, start);
 
             // 真流式：模型吐一片就转发一片，不再等全文。
             // onChunk 里 send 失败（客户端断开）会抛异常，被 chatWithHistoryStreaming

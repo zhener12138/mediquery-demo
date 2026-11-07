@@ -50,14 +50,26 @@ public class KnowledgeRetrievalService {
     }
 
     /**
+     * 检索产物：不只是喂给模型的文本，还有「到底参考了哪几条」。
+     * <p>以前只返回 String，命中的条目名在拼进上下文的那一刻就丢了 ——
+     * 想在前端标一句「参考了：病毒性感冒」都做不到，用户只能看到一段没有出处的黑盒回答。
+     */
+    public record Retrieved(String context, List<String> sources) {}
+
+    /**
      * 根据用户输入检索相关知识，格式化为上下文文本。
      * 返回空字符串表示未找到匹配。
      */
     public String retrieve(String userMessage) {
-        if (!StringUtils.hasText(userMessage)) return "";
+        return retrieveWithSources(userMessage).context();
+    }
+
+    /** 同 {@link #retrieve(String)}，但额外带出命中的条目名（疾病名 + 药品名），供前端做来源标注。 */
+    public Retrieved retrieveWithSources(String userMessage) {
+        if (!StringUtils.hasText(userMessage)) return new Retrieved("", List.of());
 
         var keywords = tokenize(userMessage);
-        if (keywords.isEmpty()) return "";
+        if (keywords.isEmpty()) return new Retrieved("", List.of());
 
         var illnesses = rankIllnesses(keywords);
         var medicines = rankMedicines(keywords);
@@ -71,7 +83,12 @@ public class KnowledgeRetrievalService {
             context.append("【参考知识库 · 药品】\n");
             for (var m : medicines) context.append(formatMedicine(m));
         }
-        return context.toString();
+
+        // 名称去重（同名疾病/药品理论上只有一条，但 LinkedHashSet 防御性地保序去重）
+        var sources = new LinkedHashSet<String>();
+        for (var i : illnesses) sources.add(i.getName());
+        for (var m : medicines) sources.add(m.getName());
+        return new Retrieved(context.toString(), List.copyOf(sources));
     }
 
     /** 批量召回后按相关度取 Top3 */

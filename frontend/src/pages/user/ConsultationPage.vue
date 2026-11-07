@@ -156,6 +156,8 @@
               </div>
               <div class="msg-col">
                 <div :class="['msg-content', { 'msg-error': m.isError }]">{{ m.content }}</div>
+                <!-- 来源标注：让用户知道这句话有知识库出处，而不是一段无法核实的黑盒回答 -->
+                <p v-if="m.sources?.length" class="msg-sources">参考了：{{ m.sources.join('、') }}</p>
                 <el-button
                   v-if="m.isError && m.retryable"
                   link
@@ -439,6 +441,8 @@ interface Msg {
   content: string
   isError?: boolean
   retryable?: boolean
+  /** 本条回答参考的知识库条目名（SSE start 事件带出），空/缺省就不显示来源行 */
+  sources?: string[]
 }
 
 /** 后端 TriageResult 的即时投影 */
@@ -625,6 +629,8 @@ async function send() {
 
   let aiIdx = -1
   let streamDone = false
+  // start 事件里的检索命中条目名，等第一个 chunk 建 AI 消息时挂上去
+  let pendingSources: string[] | undefined
 
   try {
     // 用 fetch 而不是 axios：axios 会把整个响应当成字符串缓冲，
@@ -685,6 +691,9 @@ async function send() {
         // 第一帧：规则引擎的即时分诊，先于 AI 的第一个字
         if (data.type === 'start') {
           applyTriage(data)
+          // 检索命中的知识库条目名也在这帧里；AI 消息要等第一个 chunk 才建，
+          // 先暂存，建消息时挂上去
+          pendingSources = Array.isArray(data.sources) && data.sources.length ? data.sources : undefined
           continue
         }
 
@@ -703,7 +712,8 @@ async function send() {
         if (data.chunk) {
           if (aiIdx === -1) {
             typing.value = false
-            messages.value.push({ role: 'assistant', content: data.chunk })
+            messages.value.push({ role: 'assistant', content: data.chunk, sources: pendingSources })
+            pendingSources = undefined
             aiIdx = messages.value.length - 1
           } else {
             messages.value[aiIdx].content += data.chunk
@@ -1137,6 +1147,12 @@ onUnmounted(stopPolling)
   border: 1px solid #fde2e2 !important;
 }
 .msg-retry { margin-top: 6px; padding: 0; height: auto; }
+/* 来源标注：刻意比正文小一号、压成灰色 —— 提供出处但不抢正文 */
+.msg-sources {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #a8abb2;
+}
 
 .typing { display: flex; align-items: center; gap: 4px; padding: 14px 15px; }
 .typing span {

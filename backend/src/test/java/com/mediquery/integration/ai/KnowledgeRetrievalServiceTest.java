@@ -62,6 +62,48 @@ class KnowledgeRetrievalServiceTest {
     }
 
     @Test
+    @DisplayName("sources 带出命中条目名：疾病名与药品名，供前端做来源标注")
+    void sourcesCarryHitNames() {
+        when(strategy.recallIllnesses(anyList(), anyInt())).thenReturn(List.of(
+                illness(1, "咳嗽变异性哮喘", "气道高反应", "干咳")));
+        // 药品必须真的命中「咳嗽」才会被收进 Top-K —— 相关度为 0 的条目本来就该被过滤
+        when(strategy.recallMedicines(anyList(), anyInt())).thenReturn(List.of(
+                medicine(9, "川贝止咳糖浆", "止咳化痰", "用于咳嗽、咳痰")));
+
+        var retrieved = service.retrieveWithSources("咳嗽怎么办");
+
+        // 上下文不变（老调用方行为不变），新增的 sources 是纯增量
+        assertThat(retrieved.context()).contains("咳嗽变异性哮喘").contains("川贝止咳糖浆");
+        assertThat(retrieved.sources()).containsExactly("咳嗽变异性哮喘", "川贝止咳糖浆");
+    }
+
+    @Test
+    @DisplayName("相关度为 0 的药品不进 sources：来源标注不能挂无关条目")
+    void irrelevantMedicineNeverEntersSources() {
+        when(strategy.recallIllnesses(anyList(), anyInt())).thenReturn(List.of(
+                illness(1, "咳嗽变异性哮喘", "气道高反应", "干咳")));
+        // 「布洛芬」与「咳嗽」零相关（名称、keyword、effect 都不含），必须被 score>0 过滤
+        when(strategy.recallMedicines(anyList(), anyInt())).thenReturn(List.of(
+                medicine(9, "布洛芬", "退热镇痛", "缓解轻中度疼痛")));
+
+        var retrieved = service.retrieveWithSources("咳嗽怎么办");
+
+        assertThat(retrieved.context()).contains("咳嗽变异性哮喘").doesNotContain("布洛芬");
+        assertThat(retrieved.sources()).containsExactly("咳嗽变异性哮喘");
+    }
+
+    @Test
+    @DisplayName("零命中时 sources 为空列表，不返回 null")
+    void emptyHitYieldsEmptySources() {
+        when(strategy.recallIllnesses(anyList(), anyInt())).thenReturn(List.of());
+        when(strategy.recallMedicines(anyList(), anyInt())).thenReturn(List.of());
+
+        var retrieved = service.retrieveWithSources("感冒");
+        assertThat(retrieved.context()).isEmpty();
+        assertThat(retrieved.sources()).isEmpty();
+    }
+
+    @Test
     @DisplayName("名称命中权重高于正文命中：即使正文里出现多次也排不到前面")
     void nameHitOutranksBodyHit() {
         // id=2 只在 symptom 里含「咳嗽」；id=1 在 name 里含「咳嗽」
