@@ -2,10 +2,12 @@ package com.mediquery.module.consultation.service;
 
 import com.mediquery.common.exception.BusinessException;
 import com.mediquery.module.consultation.dto.CreateConsultationRequest;
+import com.mediquery.module.consultation.entity.AiChatRecord;
 import com.mediquery.module.consultation.entity.Consultation;
 import com.mediquery.module.consultation.entity.ConsultationStatus;
 import com.mediquery.module.consultation.entity.Severity;
 import com.mediquery.module.consultation.entity.SummaryStatus;
+import com.mediquery.module.consultation.mapper.AiChatRecordMapper;
 import com.mediquery.module.consultation.mapper.ConsultationMapper;
 import com.mediquery.module.consultation.statemachine.IllegalStateTransitionException;
 import com.mediquery.module.consultation.vo.ConsultationVO;
@@ -64,10 +66,15 @@ class ConsultationServiceTest {
     @Autowired
     private ConsultationMapper mapper;
 
+    @Autowired
+    private AiChatRecordMapper chatRecordMapper;
+
     @BeforeEach
     void clean() {
         mapper.delete(com.baomidou.mybatisplus.core.toolkit.Wrappers
                 .<Consultation>lambdaQuery().gt(Consultation::getId, 0));
+        chatRecordMapper.delete(com.baomidou.mybatisplus.core.toolkit.Wrappers
+                .<AiChatRecord>lambdaQuery().gt(AiChatRecord::getId, 0));
     }
 
     // ────────────────────── 创建与幂等 ──────────────────────
@@ -285,6 +292,40 @@ class ConsultationServiceTest {
         assertNull(mapper.selectById(vo.getId()));
     }
 
+    @Test
+    @DisplayName("删除问诊单时，对话正文必须一起清掉")
+    void deleteAlsoPurgesChatRecords() {
+        var vo = service.create(ALICE, req("胸口有点闷"));
+        service.complete(vo.getId(), ALICE);
+
+        // 造两条真实对话，模拟「患者说了症状、助手回了话」
+        chatRecordMapper.insert(record(ALICE, vo.getSessionId(), "user", "胸口有点闷，两天了"));
+        chatRecordMapper.insert(record(ALICE, vo.getSessionId(), "assistant", "是一直闷还是活动后闷？"));
+        assertEquals(2, countChat(vo.getSessionId()), "前置条件：对话确实写进去了");
+
+        service.delete(vo.getId(), ALICE);
+
+        assertEquals(0, countChat(vo.getSessionId()),
+                "只删单子不删对话，等于用户点了删除但症状描述还躺在库里（健康数据，这是隐私问题）");
+    }
+
+    @Test
+    @DisplayName("删除只清自己那张单子的对话，别人的不受影响")
+    void deleteDoesNotTouchOtherSessions() {
+        var mine = service.create(ALICE, req("我的问题"));
+        var others = service.create(BOB, req("别人的问题"));
+        service.complete(mine.getId(), ALICE);
+        service.complete(others.getId(), BOB);
+        chatRecordMapper.insert(record(ALICE, mine.getSessionId(), "user", "我的症状"));
+        chatRecordMapper.insert(record(BOB, others.getSessionId(), "user", "别人的症状"));
+
+        service.delete(mine.getId(), ALICE);
+
+        assertEquals(0, countChat(mine.getSessionId()));
+        assertEquals(1, countChat(others.getSessionId()),
+                "按 sessionId 删除就这点必须守住，删串了就是删了别人的病历");
+    }
+
     // ────────────────────── 超时 ──────────────────────
 
     @Test
@@ -398,5 +439,19 @@ class ConsultationServiceTest {
         var r = new CreateConsultationRequest();
         r.setChiefComplaint(complaint);
         return r;
+    }
+
+    private static AiChatRecord record(Integer userId, String sessionId, String role, String content) {
+        var r = new AiChatRecord();
+        r.setUserId(userId);
+        r.setSessionId(sessionId);
+        r.setRole(role);
+        r.setContent(content);
+        return r;
+    }
+
+    private long countChat(String sessionId) {
+        return chatRecordMapper.selectCount(com.baomidou.mybatisplus.core.toolkit.Wrappers
+                .<AiChatRecord>lambdaQuery().eq(AiChatRecord::getSessionId, sessionId));
     }
 }

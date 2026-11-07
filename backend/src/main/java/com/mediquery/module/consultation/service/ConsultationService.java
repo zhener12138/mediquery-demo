@@ -11,10 +11,12 @@ import com.mediquery.common.exception.BusinessException;
 import com.mediquery.integration.ai.DashScopeClient;
 import com.mediquery.module.consultation.dto.CreateConsultationRequest;
 import com.mediquery.module.operationlog.aspect.AuditLog;
+import com.mediquery.module.consultation.entity.AiChatRecord;
 import com.mediquery.module.consultation.entity.Consultation;
 import com.mediquery.module.consultation.entity.ConsultationStatus;
 import com.mediquery.module.consultation.entity.Severity;
 import com.mediquery.module.consultation.entity.SummaryStatus;
+import com.mediquery.module.consultation.mapper.AiChatRecordMapper;
 import com.mediquery.module.consultation.mapper.ConsultationMapper;
 import com.mediquery.module.consultation.statemachine.ConsultationStateMachine;
 import com.mediquery.module.consultation.statemachine.IllegalStateTransitionException;
@@ -72,15 +74,18 @@ public class ConsultationService {
     private final SummaryService summaryService;
     private final DashScopeClient dashScopeClient;
     private final ObjectMapper objectMapper;
+    private final AiChatRecordMapper aiChatRecordMapper;
 
     public ConsultationService(ConsultationMapper consultationMapper,
                                SummaryService summaryService,
                                DashScopeClient dashScopeClient,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper,
+                               AiChatRecordMapper aiChatRecordMapper) {
         this.consultationMapper = consultationMapper;
         this.summaryService = summaryService;
         this.dashScopeClient = dashScopeClient;
         this.objectMapper = objectMapper;
+        this.aiChatRecordMapper = aiChatRecordMapper;
     }
 
     // ────────────────────────────── 创建 ──────────────────────────────
@@ -301,8 +306,13 @@ public class ConsultationService {
             throw new BusinessException(409, "进行中的问诊不能删除，请先完结或取消");
         }
         consultationMapper.deleteById(id);
+        // 对话正文必须一起删。问诊单是「病例的壳」，ai_chat_record 是「病例的正文」——
+        // 只删壳会把患者的症状描述永久留在库里，用户点了删除却什么也没删掉。
+        // 同一事务里执行，不存在删一半的中间态。
+        int purged = aiChatRecordMapper.delete(new LambdaQueryWrapper<AiChatRecord>()
+                .eq(AiChatRecord::getSessionId, c.getSessionId()));
         afterCommit(() -> dashScopeClient.clearContext(c.getSessionId()));
-        log.info("问诊记录删除 id={} patientId={}", id, patientId);
+        log.info("问诊记录删除 id={} patientId={} 同时清除对话 {} 条", id, patientId, purged);
     }
 
     /**
@@ -400,9 +410,14 @@ public class ConsultationService {
         int affected = consultationMapper.update(null, new LambdaUpdateWrapper<Consultation>()
                 .eq(Consultation::getId, id)
                 .eq(Consultation::getStatus, ConsultationStatus.IN_PROGRESS)
+                // 和 complete() 用同一套乐观锁纪律：定时任务和用户点「完结」是两个线程，
+                // 只靠 status 判断挡不住「同时读到 IN_PROGRESS」的那一刻。
+                // 少了这一行，两边都能更新成功，小结就会被生成两次、第二次覆盖第一次。
+                .eq(Consultation::getVersion, c.getVersion())
                 .set(Consultation::getStatus, ConsultationStatus.TIMEOUT)
                 .set(Consultation::getClosedAt, now)
-                .set(Consultation::getSummaryStatus, SummaryStatus.GENERATING));
+                .set(Consultation::getSummaryStatus, SummaryStatus.GENERATING)
+                .set(Consultation::getVersion, c.getVersion() + 1));
         if (affected == 0) {
             return false;
         }
