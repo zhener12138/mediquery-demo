@@ -1,51 +1,67 @@
-<h1 align="center">🏥 医问通 MediQuery</h1>
-<p align="center"><strong>智慧医药查询系统 — Spring Boot 3 + Vue 3 全栈项目</strong></p>
+<h1 align="center">🩺 医问通 MediQuery</h1>
+<p align="center"><strong>一个只做在线问诊的 AI 分诊机器人 — Spring Boot 3 + Vue 3</strong></p>
 <p align="center">
   <img src="https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white" alt="Java 21">
   <img src="https://img.shields.io/badge/Spring_Boot-3.4-6DB33F?logo=springboot&logoColor=white" alt="Spring Boot 3.4">
   <img src="https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white" alt="Vue 3.5">
   <img src="https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white" alt="MySQL 8.0">
   <img src="https://img.shields.io/badge/Redis-7.0-DC382D?logo=redis&logoColor=white" alt="Redis 7">
-  <img src="https://img.shields.io/badge/Docker-✓-2496ED?logo=docker&logoColor=white" alt="Docker">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
 
 <p align="center">
-  <a href="#-功能概览">功能概览</a> •
+  <a href="#-它解决什么">它解决什么</a> •
+  <a href="#-问诊流程">问诊流程</a> •
   <a href="#-技术栈">技术栈</a> •
   <a href="#-快速启动">快速启动</a> •
-  <a href="#-项目结构">项目结构</a> •
-  <a href="#-接口文档">接口文档</a>
+  <a href="#-项目结构">项目结构</a>
 </p>
 
 ---
 
-## 📋 功能概览
+## 🎯 它解决什么
 
-### 🌐 公共模块
-| 功能 | 说明 |
-|------|------|
-| 疾病百科 | 按科室分类浏览，支持全文搜索（MySQL Fulltext + ngram），病因、症状、特殊症状详览 |
-| 药品查询 | 药品模糊搜索，功效 / 用法 / 禁忌查看，疾病关联推荐 |
-| 找医生 | 医生卡片展示，按科室筛选，详情页面 |
-| 用户认证 | 注册 / 登录，JWT 双 Token 无状态认证（Access + Refresh），邮箱验证码 |
+去医院之前那段最难熬的时间：症状刚出现，不知道该不该看、该挂哪个科、能不能先观察两天。
 
-### 👤 用户模块
-| 功能 | 说明 |
-|------|------|
-| 🤖 AI 智能医生 | 集成阿里通义千问 (DashScope)，**SSE 流式输出**，7×24 在线健康咨询 |
-| 👤 个人中心 | 修改资料、头像上传（阿里云 OSS）、修改密码 |
-| 📝 意见反馈 | 提交系统建议 & 问题反馈 |
+这个项目把这段路收敛成一件事：**你把症状说清楚，AI 追问关键细节，最后给你一份结构化小结。**
 
-### 🛡️ 管理员后台
-| 功能 | 说明 |
-|------|------|
-| 📊 数据大屏 | ECharts 可视化统计（用户增长、疾病分布、访问趋势） |
-| 🏥 疾病管理 | CRUD、发布 / 草稿 / 删除、分类管理 |
-| 💊 药品管理 | CRUD、药品类型分类、疾病关联 |
-| 👨‍⚕️ 医生管理 | CRUD、科室 / 职称维护 |
-| 📮 反馈管理 | 查看用户反馈并回复 |
-| 👥 用户管理 | 启用 / 禁用账号、角色管理 |
+小结里包含：主诉、病程、症状清单、可能的方向、建议科室及理由、居家护理建议、用药提示、危险信号、严重程度，以及一条不可移除的免责声明。
+
+### 边界
+
+| 做 | 不做 |
+|----|------|
+| 多轮追问，把模糊症状收敛成清晰问题 | 不下诊断结论 |
+| 危险信号优先识别，第一句话就提示就医 | 不给具体剂量、疗程、处方 |
+| 给出方向性判断与建议科室 | 替代医生面诊 |
+| 生成可回看的结构化小结 | 人工接诊、视频、支付、药品库存 |
+
+---
+
+## 🔄 问诊流程
+
+```
+发起问诊（一句话主诉）
+      │
+      ▼
+异步分诊（纯内存规则，微秒级）
+      │  ├─ 命中危险信号 → SSE 第一帧就带红色横幅，先于 AI 第一个字
+      │  └─ 命中症状词   → 记录建议科室
+      ▼
+SSE 多轮对话（逐字流式）
+      │  ├─ RAG 召回：疾病库 / 药品库全文索引辅助判断
+      │  └─ 历史上下文 + 会话上下文缓存（Redis，24 小时）
+      ▼
+完结问诊
+      │
+      ▼
+异步生成小结（独立线程池，不占前台请求）
+      │  └─ 失败可重试，成功即终态（医疗记录不被反复覆盖）
+      ▼
+结构化小结（12 个字段 + 固定免责声明）
+```
+
+**30 分钟无活动自动关闭**，由定时任务扫描，单条独立事务——一条脏数据不会卡死整批。
 
 ---
 
@@ -55,41 +71,24 @@
 |------|----------|
 | **后端框架** | Spring Boot 3.4, Spring Security, Spring Data Redis, Spring Mail |
 | **持久层** | MyBatis-Plus 3.5, MySQL 8.0, Druid 连接池 |
-| **认证** | JWT (jjwt 0.12), BCrypt 密码加密, 双 Token 刷新机制 |
-| **API 文档** | SpringDoc OpenAPI (Swagger UI), 中文界面 |
-| **工具库** | Hutool 5.8, Lombok, EasyExcel 3.3, spring-dotenv |
-| **AI 集成** | 阿里通义千问 (DashScope SDK), SSE 流式对话 |
-| **存储** | 阿里云 OSS（头像上传） |
+| **认证** | JWT (jjwt 0.12), BCrypt, 双 Token 刷新机制 |
+| **AI 集成** | 阿里通义千问 (DashScope SDK), SSE 流式对话, Redis 会话上下文 |
+| **知识召回** | MySQL FULLTEXT + ngram 分词器，双策略实现（全文索引 / LIKE 回落） |
+| **API 文档** | SpringDoc OpenAPI (Swagger UI) |
 | **前端框架** | Vue 3 (Composition API), TypeScript, Vite 6 |
-| **UI 组件** | Element Plus 2.9, @element-plus/icons-vue |
+| **UI 组件** | Element Plus 2.9 |
 | **状态管理** | Pinia 2.3 |
-| **图表** | ECharts 5.5 |
+| **存储** | 阿里云 OSS（头像上传） |
 | **部署** | Docker, docker-compose, Nginx 反向代理, 多阶段构建 |
 
-### 架构图
+### 关键设计
 
-```
-┌─────────────────────────────────────────────────────┐
-│                     Browser                          │
-│              localhost:80 (Nginx)                    │
-└─────────────────┬───────────────────────────────────┘
-                  │
-    ┌─────────────┴──────────────┐
-    │                            │
-    ▼                            ▼
-┌─────────┐              ┌──────────────┐
-│  Vue 3  │── REST API ─▶│ Spring Boot 3│
-│  Front  │              │   Backend    │
-│  :80    │◀── JSON ─── │   :8088      │
-└─────────┘              └──┬───┬───┬──┘
-                            │   │   │
-              ┌─────────────┘   │   └─────────────┐
-              ▼                 ▼                 ▼
-        ┌──────────┐    ┌──────────┐    ┌──────────────┐
-        │  MySQL   │    │  Redis   │    │  External API │
-        │  :3307   │    │  :6380   │    │ DashScope/OSS │
-        └──────────┘    └──────────┘    └──────────────┘
-```
+- **双线程池隔离**：SSE 对话池（8/32）与小结生成池（2/4）分开。小结调用 AI 要 30 秒，放同一个池会被后台任务拖死前台对话。
+- **小结不加事务**：`SummaryService` 类上明确禁止 `@Transactional`——AI 调用 30 秒会占死 Druid 的连接（max-active 20），把整个应用拖垮。
+- **分诊在存储之前**：危险信号判定放在写消息之前，才能保证 SSE 第一帧就带横幅，而不是等 AI 说完才补。
+- **severity 宁低勿高**：脏数据宁可判低不可判高，绝不发出假告警。
+- **免责声明后端强制覆盖**：不信任模型输出的免责声明，`SummaryVO` 里写死并覆盖。
+- **增量输出必须开**：`GenerationResult.incrementalOutput(true)`。不设会返回累积文本，实测 37113 字 vs 681 字，差 54 倍。
 
 ---
 
@@ -102,37 +101,30 @@
 - MySQL 8.0+
 - Redis 7+
 - Node.js 20+
-- Docker & docker-compose（可选，用于一键部署）
+- Docker & docker-compose（可选）
 
-### 方式一：Docker 一键部署（推荐）
+### 方式一：Docker 一键部署
 
 ```bash
-# 1. 克隆项目
 git clone https://github.com/zhener12138/mediquery-demo.git
 cd mediquery-demo
 
-# 2. 配置密钥（非常重要！）
+# 配置密钥
 cp .env.example .env
-# 编辑 .env 文件，填入你的 MySQL 密码、邮箱授权码、DashScope API Key、OSS AccessKey 等
-# 每一项都有注释说明去哪里获取
-# 注意：spring-dotenv 会自动加载 .env，无需手动 export
+# 编辑 .env：MySQL 密码、邮箱授权码、DashScope API Key、OSS AccessKey
+# spring-dotenv 会自动加载，无需手动 export
 
-# 3. 启动
 docker-compose up -d
 
-# 4. 访问
 # 前端: http://localhost
-# 后端 API 文档: http://localhost:8088/swagger-ui.html
+# API 文档: http://localhost:8088/swagger-ui.html
 ```
 
 ### 方式二：本地开发
 
 ```bash
-# 1. 克隆 & 配置密钥（同上）
-git clone https://github.com/zhener12138/mediquery-demo.git
-cd mediquery-demo
+# 1. 配置密钥
 cp .env.example .env
-# 编辑 .env，spring-dotenv 在启动时自动加载
 
 # 2. 导入数据库
 # 执行 backend/src/main/resources/db/init.sql
@@ -158,9 +150,7 @@ npm run dev
 | `MAIL_USERNAME` / `MAIL_PASSWORD` | 邮箱 & SMTP 授权码 | QQ邮箱 → 设置 → 账户 → POP3/SMTP → 开启 |
 | `ALIYUN_OSS_*` | 阿里云 OSS 配置 | [RAM 访问控制](https://ram.console.aliyun.com/manage/ak) |
 
-> ⚠️ **`.env` 文件已加入 `.gitignore`，不会被提交。** `.env.example` 作为模板可以安全提交。
->
-> 项目已集成 `spring-dotenv`，Spring Boot 启动时自动读取项目根目录的 `.env` 文件，无需手动 export 环境变量。
+> ⚠️ **`.env` 已加入 `.gitignore`，不会被提交。** `.env.example` 作为模板可以安全提交。
 
 ---
 
@@ -168,67 +158,89 @@ npm run dev
 
 ```
 mediquery-demo/
-├── backend/                         # Spring Boot 后端
+├── backend/                          # Spring Boot 后端
 │   ├── src/main/java/com/mediquery/
 │   │   ├── MediQueryApplication.java
-│   │   ├── common/                  # 通用组件（DTO, 全局异常处理, 拦截器）
-│   │   ├── config/                  # 配置（Security, JWT, OpenAPI, Redis, CORS）
-│   │   ├── security/                # JWT 工具类 & Spring Security 过滤器
+│   │   ├── common/                   # 通用组件（Result, PageResult, 全局异常, TraceId）
+│   │   ├── config/                   # Security, JWT, OpenAPI, Redis, CORS, 线程池
+│   │   ├── security/                 # JWT 工具类 & 认证过滤器
 │   │   ├── module/
-│   │   │   ├── auth/                # 认证模块（注册/登录/验证码）
-│   │   │   ├── user/                # 用户模块（资料/密码）
-│   │   │   ├── illness/             # 疾病模块（分类/搜索/CRUD）
-│   │   │   ├── medicine/            # 药品模块（搜索/关联/CRUD）
-│   │   │   ├── doctor/              # 医生模块（科室/职称/CRUD）
-│   │   │   ├── ai_doctor/           # AI 医生（通义千问对话，SSE 流式）
-│   │   │   ├── feedback/            # 反馈模块
-│   │   │   └── dashboard/           # 数据大屏（统计接口）
-│   │   └── integration/             # 第三方集成
-│   │       ├── ai/DashScopeClient.java      # 通义千问 SDK 封装
-│   │       ├── email/EmailClient.java       # 邮件发送
-│   │       └── oss/OssClient.java           # 阿里云 OSS 上传
+│   │   │   ├── auth/                 # 注册 / 登录 / 验证码
+│   │   │   ├── user/                 # 个人资料 / 密码 / 头像
+│   │   │   ├── consultation/         # ★ 问诊核心
+│   │   │   │   ├── triage/           # 异步分诊规则引擎
+│   │   │   │   ├── statemachine/     # 状态机（进行中 / 完成 / 取消 / 超时）
+│   │   │   │   ├── service/          # 对话流、小结生成
+│   │   │   │   ├── job/              # 超时关闭扫描
+│   │   │   │   ├── security/         # 归属校验（@consultGuard）
+│   │   │   │   └── vo/               # 问诊单 / 小结
+│   │   │   ├── illness/              # 疾病知识底座（RAG 召回用，无对外页面）
+│   │   │   ├── medicine/             # 药品知识底座（同上）
+│   │   │   ├── stats/                # 公开统计（首页用）
+│   │   │   └── operationlog/         # 审计日志
+│   │   └── integration/
+│   │       ├── ai/                   # DashScope 封装 + 知识召回 + 双检索策略
+│   │       ├── email/                # 邮件发送
+│   │       └── oss/                  # 阿里云 OSS
 │   └── src/main/resources/
-│       ├── application.yml          # 主配置（密钥通过 .env 注入）
-│       └── db/init.sql              # 数据库初始化脚本（含种子数据）
+│       ├── application.yml
+│       └── db/init.sql               # 建表 + 种子数据（8 张表）
 │
-├── frontend/                        # Vue 3 前端
+├── frontend/                         # Vue 3 前端
 │   ├── src/
-│   │   ├── api/                     # Axios 封装 & 接口层
-│   │   ├── components/layout/       # 布局组件
+│   │   ├── api/                      # Axios 封装（401 单飞续期）
+│   │   ├── components/layout/        # AppHeader / AppFooter
 │   │   ├── pages/
-│   │   │   ├── public/              # 公开页面（首页/搜索/疾病/药品/医生/登录/注册）
-│   │   │   ├── user/                # 用户页面（AI医生/个人中心/反馈）
-│   │   │   └── admin/               # 管理后台（数据大屏/疾病/药品/医生/用户/反馈管理）
-│   │   ├── router/                  # Vue Router 路由配置
-│   │   └── stores/                  # Pinia 状态管理（auth）
-│   └── nginx.conf                   # Nginx 生产环境配置
+│   │   │   ├── public/               # 首页 / 登录 / 注册 / 404
+│   │   │   └── user/                 # 问诊页 / 个人中心
+│   │   ├── router/                   # 6 条路由
+│   │   └── stores/                   # Pinia（auth）
+│   └── nginx.conf
 │
-├── docker-compose.yml               # Docker 一键编排
-├── .env.example                     # 环境变量模板
-├── .gitignore
+├── docker-compose.yml
+├── .env.example
 └── LICENSE
 ```
+
+> **知识库退到后端**：疾病库和药品库不再是用户能「逛」的页面，它们变成 RAG 的召回底座。用户不需要知道有这两张表。
 
 ---
 
 ## 📖 接口文档
 
-启动后端后访问：**http://localhost:8080/swagger-ui.html**
+启动后端后访问 **http://localhost:8080/swagger-ui.html**。
 
-SpringDoc OpenAPI (Swagger UI) 提供了在线可视化 API 文档，可直接调试接口。所有需要认证的接口右上角可填入 Bearer Token。
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v1/auth/login` | 登录 |
+| POST | `/api/v1/auth/register` | 注册 |
+| POST | `/api/v1/auth/refresh` | 刷新 Token |
+| POST | `/api/v1/consultations` | 发起问诊 |
+| GET | `/api/v1/consultations` | 我的问诊列表 |
+| GET | `/api/v1/consultations/{id}` | 问诊详情（含小结） |
+| POST | `/api/v1/consultations/{id}/messages/stream` | **SSE 流式对话** |
+| GET | `/api/v1/consultations/{id}/messages` | 历史消息 |
+| PUT | `/api/v1/consultations/{id}/complete` | 完结并生成小结 |
+| PUT | `/api/v1/consultations/{id}/cancel` | 取消问诊 |
+| PUT | `/api/v1/consultations/{id}/summary/retry` | 重试小结生成 |
+| DELETE | `/api/v1/consultations/{id}` | 删除问诊单 |
+| GET | `/api/v1/stats` | 公开统计 |
+| GET | `/api/v1/user/me` | 当前用户 |
+| PUT | `/api/v1/user/profile` | 修改资料 |
+| PUT | `/api/v1/user/password` | 修改密码 |
+| POST | `/api/v1/files/upload` | 上传头像 |
 
----
+### SSE 事件流
 
-## 💡 设计亮点
+`POST /consultations/{id}/messages/stream` 返回的每一帧都是 `event: delta`：
 
-- **无状态认证**：JWT + Spring Security，服务端不存 Session，支持水平扩展
-- **双 Token 机制**：Access Token（15分钟）+ Refresh Token（7天），兼顾安全与体验
-- **SSE 流式对话**：AI 回复逐字推送到前端，类似 ChatGPT 的打字效果
-- **环境变量管理**：spring-dotenv 自动加载 `.env`，敏感信息不入库
-- **多阶段 Docker 构建**：编译与运行分离，最终镜像仅含 JRE + jar，体积小
-- **逻辑删除**：MyBatis-Plus @TableLogic，数据可恢复，保留历史追溯
-- **全文搜索**：MySQL ngram 分词器，支持中文模糊搜索
-- **Redis 缓存**：疾病/药品查询结果缓存，减少数据库压力
+| type | 时机 | 载荷 |
+|------|------|------|
+| `start` | 立刻，AI 吐第一个字之前 | `triageSeverity` / `redFlags` / `suggestDept` / `advice` |
+| `chunk` | 流式过程中 | `chunk`（增量文本） |
+| `meta` | 回复结束 | `triageSeverity` / `suggestDept`（`severity` 恒为 null，严重度由小结回顾性判断） |
+| `end` | 完全结束 | `summarizing` |
+| `error` | 异常 | `message` / `code` / `retryable` |
 
 ---
 
