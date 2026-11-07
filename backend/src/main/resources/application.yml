@@ -51,6 +51,35 @@ spring:
       max-file-size: 10MB
       max-request-size: 20MB
 
+  # ----------------------------------------------------------------
+  # Flyway：数据库结构版本管理
+  #
+  # 背景：之前靠 db/init.sql「一次性全量建表」，只有 docker-compose 首次启动
+  # 会执行它。已经建好的库永远不再跑——所以每加一个字段，都得人工去 live 库
+  # 敲 ALTER。2026-11-07 加问诊信息卡 4 个列时就栽在这上面：代码上线，
+  # 库不知道，create 直接 500（Unknown column 'duration_desc'）。
+  #
+  # 现在：结构归 Flyway（db/migration/V*.sql），种子数据归 db/seed.sql。
+  #
+  # baseline-on-migrate 是给「已经存在的库」用的：那些库是 init.sql 时代建的，
+  # 里面有数据但没有 flyway_schema_history 表。开启后 Flyway 不会报
+  # "Found non-empty schema without schema history table"，而是把
+  # baseline-version 记为已执行，只跑它之后的迁移。
+  #
+  # 老库（init.sql 建的，结构已经等于 V2）第一次启动请设：
+  #   FLYWAY_BASELINE_VERSION=2
+  # 全新空库不用设，默认 1，V1/V2 会依次执行。
+  # ----------------------------------------------------------------
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: ${FLYWAY_BASELINE_VERSION:1}
+    # 校验和不过就停下，不静默继续——迁移脚本被改过必须让人知道
+    validate-on-migrate: true
+    # 迁移放在业务 Bean 初始化之前，避免「表还没建，Mapper 先查」的启动竞态
+    table: flyway_schema_history
+
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
   global-config:

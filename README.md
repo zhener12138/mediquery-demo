@@ -126,8 +126,13 @@ docker-compose up -d
 # 1. 配置密钥
 cp .env.example .env
 
-# 2. 导入数据库
-# 执行 backend/src/main/resources/db/init.sql
+# 2. 建库（Flyway 会在启动时自动建表，这里只需要库本身存在）
+mysql -h127.0.0.1 -P3306 -uroot -p -e "CREATE DATABASE IF NOT EXISTS mediquery \
+  DEFAULT CHARACTER SET utf8mb4 DEFAULT COLLATE utf8mb4_unicode_ci;"
+
+# 2.1 可选：灌种子数据（10 条疾病 / 7 条药品 / 两个测试账户）
+# 不给也能跑，只是 AI 没有知识库可召回、首页看不出东西
+mysql -h127.0.0.1 -P3306 -uroot -p mediquery < backend/src/main/resources/db/seed.sql
 
 # 3. 启动后端
 cd backend
@@ -184,7 +189,9 @@ mediquery-demo/
 │   │       └── oss/                  # 阿里云 OSS
 │   └── src/main/resources/
 │       ├── application.yml
-│       └── db/init.sql               # 建表 + 种子数据（8 张表）
+│       └── db/
+│           ├── migration/            # Flyway 迁移（V1 基线 / V2 信息卡四列）
+│           └── seed.sql              # 种子数据（10 疾病 / 7 药品 / 2 账户）
 │
 ├── frontend/                         # Vue 3 前端
 │   ├── src/

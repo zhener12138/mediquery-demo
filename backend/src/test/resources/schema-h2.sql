@@ -2,21 +2,23 @@
 -- MediQuery 测试用 schema（H2 · MODE=MySQL）
 --
 -- 为什么需要这个文件：
---   src/main/resources/db/init.sql 是给 MySQL 8 用的，里面用了
+--   src/main/resources/db/migration/ 下的 Flyway 脚本是给 MySQL 8 用的，里面用了
 --   ENGINE=InnoDB / CHARSET / COLLATE / 表级 COMMENT / FULLTEXT … WITH PARSER ngram
 --   这些 H2 都不认，直接在测试里执行会失败。
+--   所以 application-test.yml 里 spring.flyway.enabled: false，测试走这个文件。
 --
 -- 维护约定：
---   本文件必须与 init.sql 的表名、字段名保持一致。
---   SchemaDriftTest 会在每次 mvn test 时比对两份文件的 CREATE TABLE 表名集合，
---   漏改会直接让测试变红，不靠人记。
+--   本文件必须与「Flyway 迁移累加之后」的表名、字段名保持一致。
+--   SchemaDriftTest 会在每次 mvn test 时拼接 db/migration/*.sql（含 ALTER 解析），
+--   再与本文件比对表名与字段名，漏改会直接让测试变红，不靠人记。
 --
 -- 刻意省略的东西（测试不依赖，且 H2 无对应能力）：
 --   · FULLTEXT KEY … WITH PARSER ngram —— 全文索引是 MySQL 专有能力
 --   · ON UPDATE CURRENT_TIMESTAMP —— updateTime 由 MyMetaObjectHandler 写入
 --   · ENGINE / CHARSET / COLLATE / COMMENT
--- 顺带也就说明了：跑在 H2 上的测试无法验证全文检索与 MySQL 方言，
--- 真实 MySQL 的验证在 CI 的 mysql-schema 作业里（只校验 init.sql 本身能建库）。
+-- 顺带也就说明了：跑在 H2 上的测试无法验证全文检索与 MySQL 方言。
+-- MySQL 侧的兜底是「在空库上真跑一次 Flyway」，这个动作只能人手做，
+-- 见 backend/README.md 的「数据库迁移」一节。
 -- ============================================================
 
 DROP TABLE IF EXISTS `sys_user`;

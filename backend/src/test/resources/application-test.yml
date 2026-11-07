@@ -25,6 +25,17 @@ spring:
       # 把它当测试夹具会让每个用例都隐式依赖那 10 条疾病/7 条药品。
       # 需要数据的用例自己准备。
       data-locations:
+  # 测试不走 Flyway。
+  #
+  # 生产迁移脚本（db/migration/V*.sql）是 MySQL 方言：ENGINE=InnoDB、
+  # CHARSET、COLLATE、FULLTEXT … WITH PARSER ngram 这些 H2 一律不认。
+  # 测试库继续由上面的 spring.sql.init 用 schema-h2.sql 建。
+  #
+  # 代价：Flyway 迁移脚本本身没有自动化测试兜底。SchemaDriftTest 比对的是
+  # 「V1+V2 拼起来」和 schema-h2.sql 的表/字段集合，能挡住「加了列忘了写迁移」；
+  # 但挡不住 MySQL 方言写错——那需要在真 MySQL 上跑一次（见 CI 的 schema job）。
+  flyway:
+    enabled: false
   data:
     redis:
       host: 127.0.0.1

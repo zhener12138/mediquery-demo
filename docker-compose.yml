@@ -13,7 +13,10 @@ services:
       - "${MYSQL_PORT:-3307}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./backend/src/main/resources/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # 不再挂载 init.sql：建表交给 Flyway（backend 启动时跑 db/migration）。
+      # 这里的入口脚本只在数据卷为空时执行一次，而 Flyway 要在后端启动时才跑，
+      # 时序对不上——挂 seed.sql 进去会在表还不存在时 INSERT 而失败。
+      # 需要种子数据：等后端起来后手动 mysql mediquery < backend/src/main/resources/db/seed.sql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
