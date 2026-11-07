@@ -141,6 +141,11 @@ ai:
     # 模型名可配置：不同账号对不同模型的配额/开通状态不同。
     # qwen-turbo 免费额度用完会返回 429 Throttling.RateQuota，此时可换成 qwen-plus。
     model: ${AI_DASHSCOPE_MODEL:qwen-turbo}
+    # 超时必须显式设。SDK 自己不管超时，走 OkHttp 默认值等于永不超时：
+    # 上游卡住不吐字，SSE 线程就一直挂着，32 个线程挂满后全站问诊都进不来。
+    # read-timeout 指的是「两个字之间最多等多久」，不是整段回答的总时长。
+    connect-timeout-seconds: ${AI_DASHSCOPE_CONNECT_TIMEOUT:10}
+    read-timeout-seconds: ${AI_DASHSCOPE_READ_TIMEOUT:60}
 
 # 阿里云 OSS — 文件上传
 aliyun:
