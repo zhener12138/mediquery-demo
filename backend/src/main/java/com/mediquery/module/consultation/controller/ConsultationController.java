@@ -3,6 +3,7 @@ package com.mediquery.module.consultation.controller;
 import com.mediquery.common.dto.PageResult;
 import com.mediquery.common.dto.Result;
 import com.mediquery.module.consultation.dto.CreateConsultationRequest;
+import com.mediquery.module.consultation.dto.IntakeRequest;
 import com.mediquery.module.consultation.security.ConsultationGuard;
 import com.mediquery.module.consultation.service.ConsultationMessageService;
 import com.mediquery.module.consultation.service.ConsultationService;
@@ -79,6 +80,51 @@ public class ConsultationController {
     public Result<ConsultationVO> detail(@PathVariable Integer id,
                                          org.springframework.security.core.Authentication auth) {
         return Result.success(consultationService.detail(id, ConsultationGuard.currentUserId(auth)));
+    }
+
+    /**
+     * 1.2 导出小结为 Markdown 文件。
+     *
+     * <p> produces 用 text/markdown 并带 {@code Content-Disposition} attachment：
+     * 浏览器直接下载而不是当成页面渲染。小结是用户自己的健康记录，
+     * 带去看医生、存档、转给家人，都应该是「点一下就有一个文件」的事。
+     */
+    @GetMapping(value = "/{id}/summary.md", produces = "text/markdown;charset=UTF-8")
+    @PreAuthorize("@consultGuard.isOwner(#id, authentication)")
+    public org.springframework.http.ResponseEntity<String> summaryMarkdown(@PathVariable Integer id,
+                                            org.springframework.security.core.Authentication auth) {
+        String md = consultationService.summaryMarkdown(id, ConsultationGuard.currentUserId(auth));
+        String filename = "mediquery-summary-" + id + ".md";
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                .body(md);
+    }
+
+    /**
+     * 读取问诊信息卡（1.1 结构化采集）。
+     *
+     * <p>返回的是整张卡：已填的槽位有值，没填的是 null —— 前端靠 null 渲染「未填」。
+     */
+    @GetMapping("/{id}/intake")
+    @PreAuthorize("@consultGuard.isOwner(#id, authentication)")
+    public Result<ConsultationVO> intake(@PathVariable Integer id,
+                                         org.springframework.security.core.Authentication auth) {
+        return Result.success(consultationService.detail(id, ConsultationGuard.currentUserId(auth)));
+    }
+
+    /**
+     * 补录/修正问诊信息卡。
+     *
+     * <p>传 null 的槽位不动，只更新明确给值的字段；进行中的单子随时可改，
+     * 终态拒绝（小结已生成，改卡只会造成卡片和结论对不上）。
+     */
+    @PutMapping("/{id}/intake")
+    @PreAuthorize("@consultGuard.isOwner(#id, authentication)")
+    public Result<ConsultationVO> updateIntake(@PathVariable Integer id,
+                                               @RequestBody IntakeRequest req,
+                                               org.springframework.security.core.Authentication auth) {
+        return Result.success(
+                consultationService.updateIntake(id, ConsultationGuard.currentUserId(auth), req));
     }
 
     /**

@@ -151,4 +151,92 @@ public class SummaryVO {
 
     public String getDisclaimer() { return disclaimer; }
     public void setDisclaimer(String disclaimer) { this.disclaimer = disclaimer; }
+
+    /**
+     * 1.2 导出：把小结渲染成一份可以直接带走的 Markdown。
+     *
+     * <p>只渲染有值的章节，空章节整个跳过 —— 一张「什么都没查出来」的小结
+     * 不该导出成七八个空标题。免责声明无条件放最后，和 API 返回保持同一纪律：
+     * 前端怎么删，落盘的文件里都有。
+     *
+     * <p>输出是纯文本拼接，不引入任何模板引擎 —— 这个格式十年不会变，
+     * 为它加依赖属于过度设计。
+     */
+    public String toMarkdown() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# 问诊小结\n\n");
+        if (severityReason == null || severityReason.isBlank()) {
+            // 占位，后面 severity 段统一写
+        }
+        sb.append("- 状态：").append(severityText() == null ? "未评估" : severityText()).append("\n");
+        sb.append("\n## 主诉\n\n").append(
+                chiefComplaint == null || chiefComplaint.isBlank() ? "（未填写）" : chiefComplaint.trim());
+        if (duration != null && !duration.isBlank()) {
+            sb.append("（病程：").append(duration.trim()).append("）");
+        }
+        sb.append("\n\n");
+
+        if (symptoms != null && !symptoms.isEmpty()) {
+            sb.append("## 症状\n\n");
+            for (String s : symptoms) {
+                sb.append("- ").append(s).append("\n");
+            }
+            sb.append("\n");
+        }
+        if (possibleDirections != null && !possibleDirections.isEmpty()) {
+            sb.append("## 可能的方向\n\n");
+            for (String s : possibleDirections) {
+                sb.append("- ").append(s).append("\n");
+            }
+            sb.append("\n");
+        }
+        if (suggestedDepartments != null && !suggestedDepartments.isEmpty()) {
+            sb.append("## 建议科室\n\n");
+            for (String s : suggestedDepartments) {
+                sb.append("- ").append(s).append("\n");
+            }
+            sb.append("\n");
+            if (departmentReason != null && !departmentReason.isBlank()) {
+                sb.append("分科理由：").append(departmentReason.trim()).append("\n\n");
+            }
+        }
+        if (medicationHints != null && !medicationHints.isEmpty()) {
+            sb.append("## 用药提示\n\n");
+            for (String s : medicationHints) {
+                sb.append("- ").append(s).append("\n");
+            }
+            sb.append("\n");
+        }
+        if (careAdvice != null && !careAdvice.isEmpty()) {
+            sb.append("## 生活建议\n\n");
+            for (String s : careAdvice) {
+                sb.append("- ").append(s).append("\n");
+            }
+            sb.append("\n");
+        }
+        if (redFlags != null && !redFlags.isEmpty()) {
+            sb.append("## 需要警惕的危险信号\n\n");
+            for (String s : redFlags) {
+                sb.append("- ").append(s).append("\n");
+            }
+            sb.append("\n");
+        }
+        if (severityReason != null && !severityReason.isBlank()) {
+            sb.append("## 严重度说明\n\n").append(severityText() == null ? "" : severityText() + "：")
+              .append(severityReason.trim()).append("\n\n");
+        }
+        sb.append("---\n\n> ").append(disclaimer == null || disclaimer.isBlank() ? DISCLAIMER_TEXT : disclaimer)
+          .append("\n");
+        return sb.toString();
+    }
+
+    /** severity 的文字版。0-轻微 1-中度 2-高度，越界当轻微。 */
+    private String severityText() {
+        if (severity == null) return null;
+        return switch (severity) {
+            case 2 -> "高度：建议立即就医";
+            case 1 -> "中度：建议近期就医";
+            default -> "轻微：可先自行观察";
+        };
+    }
 }

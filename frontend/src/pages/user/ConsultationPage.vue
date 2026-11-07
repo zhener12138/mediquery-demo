@@ -100,6 +100,12 @@
               </div>
             </div>
             <div class="head-right">
+              <el-button
+                size="small"
+                text
+                :type="showIntake ? 'primary' : ''"
+                @click="showIntake = !showIntake"
+              ><el-icon><Tickets /></el-icon>问诊信息</el-button>
               <el-tag :type="statusTagType(current.status)" size="small" effect="light" round>
                 {{ current.statusText }}
               </el-tag>
@@ -119,6 +125,52 @@
               >删除</el-button>
             </div>
           </header>
+
+          <!-- 问诊信息卡（1.1 结构化采集）：可折叠，填了帮 AI 少问几轮，不填也不拦着开单 -->
+          <section v-if="showIntake" class="intake-card">
+            <div class="intake-row">
+              <label>起病方式</label>
+              <el-radio-group v-model="intakeForm.onsetType" size="small">
+                <el-radio-button value="sudden">突然发作</el-radio-button>
+                <el-radio-button value="gradual">逐渐加重</el-radio-button>
+                <el-radio-button :value="''">没注意</el-radio-button>
+              </el-radio-group>
+            </div>
+            <div class="intake-row">
+              <label>持续多久</label>
+              <el-input v-model="intakeForm.durationDesc" size="small" maxlength="100"
+                placeholder="如：三天 / 从上周开始（可不填）" style="max-width:260px" />
+            </div>
+            <div class="intake-row">
+              <label>有多难受（0-10）</label>
+              <el-slider v-model="intakeForm.severityScale" :min="0" :max="10" show-input
+                :show-input-controls="false" input-size="small" style="max-width:300px" />
+            </div>
+            <div class="intake-row">
+              <label>过敏 / 慢性病 / 长期用药</label>
+              <div class="intake-flags">
+                <el-tag
+                  v-for="(f, fi) in intakeForm.historyFlags"
+                  :key="fi"
+                  closable
+                  size="small"
+                  @close="intakeForm.historyFlags.splice(fi, 1)"
+                >{{ f }}</el-tag>
+                <el-input
+                  v-model="historyInput"
+                  size="small"
+                  style="width:200px"
+                  placeholder="如：青霉素过敏，回车添加"
+                  @keydown.enter.prevent="addHistoryFlag"
+                />
+              </div>
+            </div>
+            <div class="intake-foot">
+              <el-button size="small" type="primary" :loading="intakeSaving" @click="saveIntake">保存</el-button>
+              <span class="intake-hint">填了 AI 就不会重复问；一个字不填也完全没问题</span>
+            </div>
+          </section>
+
 
           <!-- 实时分诊横幅：本轮消息里检测到危险信号，先于 AI 回复出现 -->
           <transition name="slide">
@@ -187,14 +239,30 @@
                   {{ current.summaryStatusText }}
                 </el-tag>
               </div>
-              <el-button
-                v-if="canRetrySummary"
-                link
-                type="primary"
-                size="small"
-                :loading="retrying"
-                @click="retrySummary"
-              >重新生成</el-button>
+              <div class="summary-actions">
+                <el-button
+                  v-if="current.summaryStatus === 2"
+                  link
+                  type="primary"
+                  size="small"
+                  @click="copySummary"
+                ><el-icon><CopyDocument /></el-icon>复制</el-button>
+                <el-button
+                  v-if="current.summaryStatus === 2"
+                  link
+                  type="primary"
+                  size="small"
+                  @click="downloadSummary"
+                ><el-icon><Download /></el-icon>下载</el-button>
+                <el-button
+                  v-if="canRetrySummary"
+                  link
+                  type="primary"
+                  size="small"
+                  :loading="retrying"
+                  @click="retrySummary"
+                >重新生成</el-button>
+              </div>
             </div>
 
             <!-- 生成中 -->
@@ -382,6 +450,9 @@ import {
   WarningFilled,
   InfoFilled,
   Clock,
+  CopyDocument,
+  Download,
+  Tickets,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api'
@@ -434,6 +505,11 @@ interface ConsultationVO {
   lastActiveAt: string
   closedAt?: string | null
   createTime: string
+  /* 问诊信息卡（1.1），全部可空 */
+  durationDesc?: string | null
+  severityScale?: number | null
+  historyFlags?: string[] | null
+  onsetType?: string | null
 }
 
 interface Msg {
@@ -556,6 +632,7 @@ async function loadList() {
 async function loadDetail(id: number, withMessages = true) {
   const res: any = await api.get(`/consultations/${id}`)
   current.value = res.data
+  syncIntakeForm()
   if (current.value?.summaryStatus === 1) startPolling()
   else stopPolling()
 
@@ -858,6 +935,123 @@ async function retrySummary() {
     retrying.value = false
   }
 }
+
+// ─────────────── 1.1 问诊信息卡 ───────────────
+
+const showIntake = ref(false)
+const intakeSaving = ref(false)
+const historyInput = ref('')
+interface IntakeForm {
+  durationDesc: string
+  severityScale: number | null
+  historyFlags: string[]
+  onsetType: string
+}
+const intakeForm = ref<IntakeForm>({ durationDesc: '', severityScale: null, historyFlags: [], onsetType: '' })
+
+/** 从当前单子回填表单；没开过卡片的单子全是空槽位。 */
+function syncIntakeForm() {
+  const c = current.value
+  if (!c) return
+  intakeForm.value = {
+    durationDesc: c.durationDesc ?? '',
+    severityScale: c.severityScale ?? null,
+    historyFlags: c.historyFlags ? [...c.historyFlags] : [],
+    onsetType: c.onsetType ?? '',
+  }
+}
+
+function addHistoryFlag() {
+  const v = historyInput.value.trim()
+  if (!v) return
+  if (intakeForm.value.historyFlags.length >= 10) {
+    ElMessage.warning('最多 10 条')
+    return
+  }
+  if (!intakeForm.value.historyFlags.includes(v)) {
+    intakeForm.value.historyFlags.push(v)
+  }
+  historyInput.value = ''
+}
+
+async function saveIntake() {
+  if (!current.value) return
+  intakeSaving.value = true
+  try {
+    const f = intakeForm.value
+    const { data } = await api.put(`/consultations/${current.value.id}/intake`, {
+      durationDesc: f.durationDesc.trim() || null,
+      severityScale: f.severityScale,
+      historyFlags: f.historyFlags,
+      onsetType: f.onsetType || null,
+    })
+    // 后端返回的是整张 VO；只把卡上那几个字段刷回 current，别把正在流式输出的对话状态顶掉
+    const vo = data.data
+    current.value.durationDesc = vo.durationDesc
+    current.value.severityScale = vo.severityScale
+    current.value.historyFlags = vo.historyFlags
+    current.value.onsetType = vo.onsetType
+    ElMessage.success('已保存，接下来的对话会用到这些信息')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '保存失败')
+  } finally {
+    intakeSaving.value = false
+  }
+}
+
+// ─────────────── 1.2 小结导出 ───────────────
+
+/** 小结的 Markdown 文本。没有后端 summary.md 之前，前端自己拼一份等价的。 */
+function summaryToMarkdown(): string {
+  const c = current.value
+  if (!c?.summary) return ''
+  const s = c.summary
+  const lines: string[] = []
+  lines.push('# 问诊小结', '')
+  const sevText = s.severity === 2 ? '高度：建议立即就医' : s.severity === 1 ? '中度：建议近期就医' : '轻微：可先自行观察'
+  lines.push(`- 状态：${sevText}`, '')
+  lines.push('## 主诉', '', s.chiefComplaint || '（未填写）' + (s.duration ? `（病程：${s.duration}）` : ''), '')
+  const section = (title: string, items?: string[]) => {
+    if (!items?.length) return
+    lines.push(`## ${title}`, '', ...items.map((x) => `- ${x}`), '')
+  }
+  section('症状', s.symptoms)
+  section('可能的方向', s.possibleDirections)
+  if (s.suggestedDepartments?.length) {
+    lines.push('## 建议科室', '', ...s.suggestedDepartments.map((x) => `- ${x}`), '')
+    if (s.departmentReason) lines.push(`分科理由：${s.departmentReason}`, '')
+  }
+  section('用药提示', s.medicationHints)
+  section('生活建议', s.careAdvice)
+  section('需要警惕的危险信号', s.redFlags)
+  if (s.severityReason) lines.push('## 严重度说明', '', `${sevText}：${s.severityReason}`, '')
+  lines.push('---', '', `> ${s.disclaimer}`, '')
+  return lines.join('\n')
+}
+
+async function copySummary() {
+  const md = summaryToMarkdown()
+  if (!md) return
+  try {
+    await navigator.clipboard.writeText(md)
+    ElMessage.success('已复制，可以直接粘贴给医生或存档')
+  } catch {
+    ElMessage.error('复制失败，浏览器可能不允许访问剪贴板')
+  }
+}
+
+function downloadSummary() {
+  const md = summaryToMarkdown()
+  if (!md) return
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `mediquery-summary-${current.value?.id ?? 'export'}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 
 onMounted(async () => {
   await loadList()
@@ -1179,6 +1373,53 @@ onUnmounted(stopPolling)
   background: #fcfdff;
   flex-shrink: 0;
 }
+/* ── 问诊信息卡（1.1） ── */
+.intake-card {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.intake-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.intake-row > label {
+  width: 150px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #606266;
+}
+.intake-flags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.intake-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.intake-hint {
+  font-size: 12px;
+  color: #a8abb2;
+}
+.summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.summary-actions + .el-button {
+  margin-left: 8px;
+}
+
 .summary-head {
   display: flex;
   align-items: center;

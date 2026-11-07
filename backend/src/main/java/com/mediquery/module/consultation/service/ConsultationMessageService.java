@@ -150,12 +150,17 @@ public class ConsultationMessageService {
             start.put("advice", triage.advice());
 
             var history = recentHistory(patientId, sid);
-            // 预筛指令拼在知识库前面：它是硬约束，不该被后面的资料稀释。
+
+            // 1.1 结构化采集：信息卡缺什么，直接告诉模型，让它主动去问，
+            // 而不是靠用户自己想起来说「哦对了我对青霉素过敏」。
+            // 已填的槽位作为 knownFacts 给模型当既有事实；全空时给一句空串不占 token。
+            var intake = consultationService.getIntakeSlots(patientId, sid);
+            String knownFacts = buildKnownFacts(intake, message);
             // 命中的条目名一起带出：AI 说「考虑病毒性感冒」时，用户能看到这句有出处，
             // 而不是一段无法核实的黑盒回答。来源标注放在 start 事件里，
             // 因为它不依赖模型 —— 检索命中那一刻就确定了，比等第一个 chunk 更早。
             var retrieved = knowledgeService.retrieveWithSources(message);
-            var knowledge = triage.toPromptPrefix() + retrieved.context();
+            var knowledge = triage.toPromptPrefix() + knownFacts + retrieved.context();
             start.put("sources", retrieved.sources());
             send(emitter, start);
 
@@ -294,5 +299,68 @@ public class ConsultationMessageService {
             out.add(m);
         }
         return out;
+    }
+
+    /**
+     * 1.1 结构化采集：把信息卡拼成模型能直接用的「已知事实 + 待追问清单」。
+     *
+     * <p>关键取舍：已填的写进 facts（模型不再重复问），没填的写进 todo
+     * （模型在对话里自然追问，最多点一次，别变成查户口）。
+     * 全空返回空串 —— 首轮消息用户刚开单就来问，信息卡一片空白是常态，
+     * 这时拼一段「用户什么都没填」没有信息量，只浪费 token。
+     *
+     * <p>{@code historyFlags} 落库时是 JSON 数组字符串，这里解析失败就当没填，
+     * 一个脏字段不应该打断一次问诊。
+     */
+    private String buildKnownFacts(Consultation c, String currentMessage) {
+        List<String> facts = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
+
+        if (c.getDurationDesc() != null && !c.getDurationDesc().isBlank()) {
+            facts.add("病程：" + c.getDurationDesc());
+        } else {
+            missing.add("症状持续多久了");
+        }
+        if (c.getSeverityScale() != null) {
+            facts.add("用户自评严重度 " + c.getSeverityScale() + "/10");
+        }
+        if (c.getOnsetType() != null && !c.getOnsetType().isBlank()) {
+            facts.add("突发".equals(c.getOnsetType()) || "sudden".equals(c.getOnsetType())
+                    ? "起病方式：突然发作" : "起病方式：逐渐加重");
+        }
+        String hist = c.getHistoryFlags();
+        if (hist != null && !hist.isBlank()) {
+            try {
+                List<String> flags = objectMapper.readValue(hist,
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
+                if (!flags.isEmpty()) {
+                    facts.add("既往史/过敏史/长期用药：" + String.join("；", flags));
+                }
+            } catch (Exception ignored) {
+                // 脏数据当没填
+            }
+        } else if (hist == null) {
+            missing.add("有没有过敏、慢性病或长期在吃的药");
+        }
+
+        if (facts.isEmpty() && missing.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        if (!facts.isEmpty()) {
+            sb.append("【用户已提供的信息】\n");
+            for (String f : facts) {
+                sb.append("- ").append(f).append("\n");
+            }
+            sb.append("以下对话不要重复问这些已确认的信息。\n");
+        }
+        if (!missing.isEmpty()) {
+            sb.append("【还需了解（自然地在对话中追问，本轮最多问一项，用户提到相关内容时才问）】\n");
+            for (String m : missing) {
+                sb.append("- ").append(m).append("\n");
+            }
+        }
+        sb.append("\n");
+        return sb.toString();
     }
 }

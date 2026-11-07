@@ -73,6 +73,8 @@ class ConsultationMessageStreamTest {
         c.setSessionId(SESSION_ID);
         c.setStatus(0);
         when(consultationService.requireActive(anyInt(), anyInt())).thenReturn(c);
+        when(consultationService.getIntakeSlots(anyInt(), anyString())).thenReturn(c);
+        // 1.1 信息卡：默认全空单子，buildKnownFacts 走「全空返回空串」路径
         when(knowledgeService.retrieveWithSources(anyString()))
                 .thenReturn(new KnowledgeRetrievalService.Retrieved("", List.of()));
 

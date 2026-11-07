@@ -41,6 +41,18 @@ public class Consultation {
     /** 主诉。用户开单时填的一句话描述，例如「咳嗽三天，有低烧」。 */
     private String chiefComplaint;
 
+    /** 病程描述。可空；「三天」「从上周开始」这类，模型拿不到就会自己去问。 */
+    private String durationDesc;
+
+    /** 自评严重度 0-10，10 最重。可空；不做任何自动分诊决策，只给模型当参考。 */
+    private Integer severityScale;
+
+    /** 既往史/过敏史/长期用药，JSON 数组字符串，如 ["青霉素过敏","高血压 5 年"]。可空。 */
+    private String historyFlags;
+
+    /** 起病方式：sudden 突然 / gradual 渐进。可空。 */
+    private String onsetType;
+
     /** @see ConsultationStatus */
     private Integer status;
 

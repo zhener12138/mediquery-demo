@@ -8,6 +8,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -191,5 +193,60 @@ class SummaryParseTest {
         assertFalse(SummaryService.isRetryable(2), "DONE 不该被覆盖");
         assertFalse(SummaryService.isRetryable(0));
         assertFalse(SummaryService.isRetryable(1));
+    }
+
+    // ────────────────────────── 1.2 导出 toMarkdown ──────────────────────────
+
+    @Test
+    @DisplayName("toMarkdown：完整小结各章节齐全，免责声明无条件落尾")
+    void toMarkdownRendersAllSections() {
+        SummaryVO vo = new SummaryVO();
+        vo.setChiefComplaint("咳嗽三天，夜间平卧加重，伴黄痰和咽痛");
+        vo.setDuration("约3天");
+        vo.setSymptoms(List.of("咳嗽", "黄痰"));
+        vo.setPossibleDirections(List.of("急性支气管炎"));
+        vo.setSuggestedDepartments(List.of("呼吸内科"));
+        vo.setDepartmentReason("评估气道炎症");
+        vo.setMedicationHints(List.of("暂勿自行服用抗生素"));
+        vo.setCareAdvice(List.of("戒烟"));
+        vo.setRedFlags(List.of("呼吸困难"));
+        vo.setSeverity(1);
+        vo.setSeverityReason("需近期面诊评估");
+        vo.setDisclaimer("测试免责声明");
+
+        String md = vo.toMarkdown();
+        assertTrue(md.contains("# 问诊小结"));
+        assertTrue(md.contains("咳嗽三天"));
+        assertTrue(md.contains("约3天"));
+        assertTrue(md.contains("- 咳嗽"));
+        assertTrue(md.contains("急性支气管炎"));
+        assertTrue(md.contains("呼吸内科"));
+        assertTrue(md.contains("暂勿自行服用抗生素"));
+        assertTrue(md.contains("戒烟"));
+        assertTrue(md.contains("呼吸困难"));
+        assertTrue(md.contains("中度：建议近期就医"));
+        assertTrue(md.endsWith("测试免责声明\n"), "免责声明必须在文件最后");
+    }
+
+    @Test
+    @DisplayName("toMarkdown：空小结只渲染主诉与免责，不出一堆空标题")
+    void toMarkdownSkipsEmptySections() {
+        SummaryVO vo = SummaryVO.empty("（未填写主诉）");
+        String md = vo.toMarkdown();
+        assertFalse(md.contains("## 可能的方向"));
+        assertFalse(md.contains("## 建议科室"));
+        assertFalse(md.contains("## 用药提示"));
+        assertFalse(md.contains("## 症状"));
+        assertTrue(md.contains("## 主诉"));
+        assertTrue(md.contains(SummaryVO.DISCLAIMER_TEXT), "免责声明必须无条件存在");
+    }
+
+    @Test
+    @DisplayName("toMarkdown：disclaimer 为 null 时兜底常量文案")
+    void toMarkdownFallsBackToConstantDisclaimer() {
+        SummaryVO vo = new SummaryVO();
+        vo.setChiefComplaint("头痛");
+        String md = vo.toMarkdown();
+        assertTrue(md.contains(SummaryVO.DISCLAIMER_TEXT));
     }
 }

@@ -5,11 +5,13 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mediquery.common.dto.PageResult;
 import com.mediquery.common.exception.BusinessException;
 import com.mediquery.integration.ai.DashScopeClient;
 import com.mediquery.module.consultation.dto.CreateConsultationRequest;
+import com.mediquery.module.consultation.dto.IntakeRequest;
 import com.mediquery.module.operationlog.aspect.AuditLog;
 import com.mediquery.module.consultation.entity.AiChatRecord;
 import com.mediquery.module.consultation.entity.Consultation;
@@ -127,6 +129,27 @@ public class ConsultationService {
         c.setLastActiveAt(LocalDateTime.now());
         c.setVersion(0);
 
+        // 1.1 结构化采集：开单时带上的信息卡槽位（前端「问诊信息」卡片）。可空。
+        if (req.getDurationDesc() != null && !req.getDurationDesc().isBlank()) {
+            c.setDurationDesc(req.getDurationDesc().trim());
+        }
+        if (req.getSeverityScale() != null) {
+            if (req.getSeverityScale() < 0 || req.getSeverityScale() > 10) {
+                throw new BusinessException(400, "严重度要在 0-10 之间");
+            }
+            c.setSeverityScale(req.getSeverityScale());
+        }
+        if (req.getHistoryFlags() != null && !req.getHistoryFlags().isEmpty()) {
+            c.setHistoryFlags(toHistoryJson(req.getHistoryFlags()));
+        }
+        if (req.getOnsetType() != null && !req.getOnsetType().isBlank()) {
+            String onset = req.getOnsetType().trim();
+            if (!"sudden".equals(onset) && !"gradual".equals(onset)) {
+                throw new BusinessException(400, "起病方式只支持 sudden（突然）或 gradual（渐进）");
+            }
+            c.setOnsetType(onset);
+        }
+
         try {
             consultationMapper.insert(c);
             log.info("发起问诊 id={} patientId={}", c.getId(), patientId);
@@ -140,6 +163,84 @@ public class ConsultationService {
                 throw e;
             }
             return reuse(raced, patientId);
+        }
+    }
+
+    /**
+     * 1.1 结构化采集：按 sessionId 取单子（供对话线程拼 knownFacts 用）。
+     *
+     * <p>问诊线程手里有 sessionId（RAG 上下文的 key），没有 id；
+     * 与其让它再传一遍 id，不如直接按 sessionId 查 —— 归属已经在上游校验过了。
+     */
+    public Consultation getIntakeSlots(Integer patientId, String sessionId) {
+        Consultation c = findBySessionId(sessionId);
+        if (c == null || !c.getPatientId().equals(patientId)) {
+            // 理论上到不了这里：能走到对话线程，归属校验已通过。防御性兜底。
+            throw new BusinessException(404, "问诊单不存在");
+        }
+        return c;
+    }
+
+    /**
+     * 1.1 结构化采集：把信息卡写进已有单子。
+     *
+     * <p>语义是「补录/修正」而不是「覆盖」：传 null 的槽位不动，
+     * 只更新用户这次明确给值的字段。进行中的单子随时可改；
+     * 终态的单子不允许再改 —— 小结已经生成，改了也只会造成「卡片和结论对不上」。
+     */
+    @Transactional
+    public ConsultationVO updateIntake(Integer id, Integer patientId, IntakeRequest req) {
+        Consultation c = consultationMapper.selectById(id);
+        if (c == null || !c.getPatientId().equals(patientId)) {
+            throw new BusinessException(404, "问诊单不存在");
+        }
+        if (c.getStatus() != ConsultationStatus.IN_PROGRESS) {
+            throw new BusinessException(409, "问诊已结束，信息卡不能再改");
+        }
+
+        if (req.getDurationDesc() != null) {
+            c.setDurationDesc(req.getDurationDesc().isBlank() ? null : req.getDurationDesc().trim());
+        }
+        if (req.getSeverityScale() != null) {
+            if (req.getSeverityScale() < 0 || req.getSeverityScale() > 10) {
+                throw new BusinessException(400, "严重度要在 0-10 之间");
+            }
+            c.setSeverityScale(req.getSeverityScale());
+        }
+        if (req.getHistoryFlags() != null) {
+            // 空数组 = 用户明确说「没有」，也要落库，和「没填」区分开
+            c.setHistoryFlags(req.getHistoryFlags().isEmpty() ? "[]" : toHistoryJson(req.getHistoryFlags()));
+        }
+        if (req.getOnsetType() != null) {
+            if (req.getOnsetType().isBlank()) {
+                c.setOnsetType(null);
+            } else {
+                String onset = req.getOnsetType().trim();
+                if (!"sudden".equals(onset) && !"gradual".equals(onset)) {
+                    throw new BusinessException(400, "起病方式只支持 sudden（突然）或 gradual（渐进）");
+                }
+                c.setOnsetType(onset);
+            }
+        }
+
+        consultationMapper.updateById(c);
+        log.info("更新问诊信息卡 id={} patientId={}", id, patientId);
+        return ConsultationVO.from(c);
+    }
+
+    private String toHistoryJson(List<String> flags) {
+        List<String> cleaned = flags.stream()
+                .filter(f -> f != null && !f.isBlank())
+                .map(String::trim)
+                .toList();
+        if (cleaned.isEmpty()) {
+            return "[]";
+        }
+        try {
+            return new ObjectMapper().writeValueAsString(cleaned);
+        } catch (JsonProcessingException e) {
+            // 理论上到不了这里（List<String> 一定能序列化），防御性兜底
+            throw new BusinessException(500, "病史信息保存失败");
         }
     }
 
@@ -189,6 +290,24 @@ public class ConsultationService {
             vo.setSummary(parseStoredSummary(c));
         }
         return vo;
+    }
+
+    /**
+     * 1.2 导出：整张小结渲染成 Markdown 文本。
+     *
+     * <p>只有 DONE 的小结能导出 —— 生成中的导不出东西，失败的更没有；
+     * 409 而不是 404，让前端能区分「单子不存在」和「小结还没好」。
+     * 回到句号为止的标题行加主诉一句话，让文件即使脱离系统也能看懂是谁的、什么时候的。
+     */
+    public String summaryMarkdown(Integer id, Integer patientId) {
+        Consultation c = requireOwned(id, patientId);
+        if (!Integer.valueOf(SummaryStatus.DONE).equals(c.getSummaryStatus())) {
+            throw new BusinessException(409, "小结还没有生成，不能导出");
+        }
+        SummaryVO vo = parseStoredSummary(c);
+        String md = vo.toMarkdown();
+        String time = c.getCreateTime() == null ? "" : c.getCreateTime().toLocalDate().toString();
+        return "导出时间：" + time + "\n\n" + md;
     }
 
     private SummaryVO parseStoredSummary(Consultation c) {

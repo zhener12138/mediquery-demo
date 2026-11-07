@@ -454,4 +454,98 @@ class ConsultationServiceTest {
         return chatRecordMapper.selectCount(com.baomidou.mybatisplus.core.toolkit.Wrappers
                 .<AiChatRecord>lambdaQuery().eq(AiChatRecord::getSessionId, sessionId));
     }
+
+    // ────────────────────────── 1.1 结构化采集 ──────────────────────────
+
+    @Test
+    @DisplayName("开单时带上信息卡槽位，detail 原样带出")
+    void createPersistsIntakeSlots() {
+        var r = req("咳嗽三天");
+        r.setDurationDesc("三天");
+        r.setSeverityScale(4);
+        r.setHistoryFlags(List.of("青霉素过敏", "高血压 5 年"));
+        r.setOnsetType("gradual");
+
+        ConsultationVO created = service.create(ALICE, r);
+        ConsultationVO detail = service.detail(created.getId(), ALICE);
+
+        assertEquals("三天", detail.getDurationDesc());
+        assertEquals(4, detail.getSeverityScale());
+        assertEquals(List.of("青霉素过敏", "高血压 5 年"), detail.getHistoryFlags());
+        assertEquals("gradual", detail.getOnsetType());
+    }
+
+    @Test
+    @DisplayName("开单不带信息卡，detail 的槽位全是 null")
+    void createWithoutIntakeLeavesNulls() {
+        ConsultationVO created = service.create(ALICE, req("头痛"));
+
+        ConsultationVO detail = service.detail(created.getId(), ALICE);
+        assertNull(detail.getDurationDesc());
+        assertNull(detail.getSeverityScale());
+        assertNull(detail.getHistoryFlags());
+        assertNull(detail.getOnsetType());
+    }
+
+    @Test
+    @DisplayName("严重度超出 0-10 直接拒绝")
+    void createRejectsBadSeverityScale() {
+        var r = req("头痛");
+        r.setSeverityScale(11);
+        assertThrows(BusinessException.class, () -> service.create(ALICE, r));
+    }
+
+    @Test
+    @DisplayName("信息卡补录：传 null 的槽位不动，明确给值的才更新")
+    void updateIntakeOnlyTouchesGivenSlots() {
+        var r = req("咳嗽三天");
+        r.setDurationDesc("三天");
+        ConsultationVO created = service.create(ALICE, r);
+
+        var patch = new com.mediquery.module.consultation.dto.IntakeRequest();
+        patch.setSeverityScale(3);
+        patch.setHistoryFlags(List.of("无"));
+        ConsultationVO updated = service.updateIntake(created.getId(), ALICE, patch);
+
+        assertEquals("三天", updated.getDurationDesc(), "没传的槽位不能被清掉");
+        assertEquals(3, updated.getSeverityScale());
+        assertEquals(List.of("无"), updated.getHistoryFlags());
+    }
+
+    @Test
+    @DisplayName("空数组病史落库为显式「无」，与「没填」区分")
+    void updateIntakeEmptyHistoryMeansExplicitNone() {
+        ConsultationVO created = service.create(ALICE, req("牙痛"));
+
+        var patch = new com.mediquery.module.consultation.dto.IntakeRequest();
+        patch.setHistoryFlags(List.of());
+        ConsultationVO updated = service.updateIntake(created.getId(), ALICE, patch);
+
+        Consultation c = mapper.selectById(created.getId());
+        assertEquals("[]", c.getHistoryFlags(), "空数组要落成 []，语义是用户明确说没有");
+        assertTrue(updated.getHistoryFlags().isEmpty(), "VO 里空数组读出来是空列表");
+    }
+
+    @Test
+    @DisplayName("终态单子不能再改信息卡")
+    void updateIntakeRejectedAfterTerminal() {
+        ConsultationVO created = service.create(ALICE, req("咳嗽"));
+        service.complete(created.getId(), ALICE);
+
+        var patch = new com.mediquery.module.consultation.dto.IntakeRequest();
+        patch.setDurationDesc("五天");
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> service.updateIntake(created.getId(), ALICE, patch));
+        assertTrue(ex.getMessage().contains("已结束"));
+    }
+
+    // ────────────────────────── 1.2 小结导出 ──────────────────────────
+
+    @Test
+    @DisplayName("小结没生成时导出 409")
+    void summaryMarkdownRejectedBeforeDone() {
+        ConsultationVO created = service.create(ALICE, req("咳嗽"));
+        assertThrows(BusinessException.class,
+                () -> service.summaryMarkdown(created.getId(), ALICE));
+    }
 }

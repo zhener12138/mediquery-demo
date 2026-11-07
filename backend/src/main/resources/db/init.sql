@@ -147,6 +147,11 @@ CREATE TABLE `consultation` (
     `patient_id`      INT          NOT NULL COMMENT '患者ID',
     `session_id`      VARCHAR(36)  NOT NULL COMMENT '会话ID，与ai_chat_record.session_id对应',
     `chief_complaint` VARCHAR(500) NOT NULL COMMENT '主诉',
+    -- 问诊信息卡（1.1 结构化采集）：可填可不填，模型拿不到就自己去问
+    `duration_desc`   VARCHAR(100) DEFAULT NULL COMMENT '病程描述，如三天/两周',
+    `severity_scale`  TINYINT      DEFAULT NULL COMMENT '自评严重度 0-10，10 最重',
+    `history_flags`   VARCHAR(500) DEFAULT NULL COMMENT '既往史/过敏史/长期用药，JSON 数组字符串',
+    `onset_type`      VARCHAR(20)  DEFAULT NULL COMMENT '起病方式: sudden/gradual',
     `status`          TINYINT      NOT NULL DEFAULT 0 COMMENT '状态: 0-进行中, 1-已完成, 2-已取消, 3-超时关闭',
     `severity`        TINYINT      NOT NULL DEFAULT 0 COMMENT '严重度: 0-低, 1-中, 2-高(展示紧急就医提示)',
     `summary_status`  TINYINT      NOT NULL DEFAULT 0 COMMENT '小结状态: 0-未生成, 1-生成中, 2-已生成, 3-生成失败',

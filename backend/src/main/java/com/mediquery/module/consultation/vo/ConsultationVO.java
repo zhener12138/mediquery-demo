@@ -6,6 +6,9 @@ import com.mediquery.module.consultation.entity.Severity;
 import com.mediquery.module.consultation.entity.SummaryStatus;
 
 import java.time.LocalDateTime;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 
 /**
  * 问诊单的对外视图。
@@ -37,6 +40,20 @@ public class ConsultationVO {
 
     /** 完结时由小结落成的一句话结论，未完结为 null。 */
     private String conclusion;
+
+    // ==== 问诊信息卡（1.1 结构化采集，全部可空） ====
+
+    /** 病程描述，如「三天」。 */
+    private String durationDesc;
+
+    /** 自评严重度 0-10。 */
+    private Integer severityScale;
+
+    /** 既往史/过敏史/长期用药列表。 */
+    private List<String> historyFlags;
+
+    /** 起病方式：sudden/gradual。 */
+    private String onsetType;
 
     private LocalDateTime lastActiveAt;
     private LocalDateTime closedAt;
@@ -75,6 +92,18 @@ public class ConsultationVO {
     public String getConclusion() { return conclusion; }
     public void setConclusion(String conclusion) { this.conclusion = conclusion; }
 
+    public String getDurationDesc() { return durationDesc; }
+    public void setDurationDesc(String durationDesc) { this.durationDesc = durationDesc; }
+
+    public Integer getSeverityScale() { return severityScale; }
+    public void setSeverityScale(Integer severityScale) { this.severityScale = severityScale; }
+
+    public List<String> getHistoryFlags() { return historyFlags; }
+    public void setHistoryFlags(List<String> historyFlags) { this.historyFlags = historyFlags; }
+
+    public String getOnsetType() { return onsetType; }
+    public void setOnsetType(String onsetType) { this.onsetType = onsetType; }
+
     public LocalDateTime getLastActiveAt() { return lastActiveAt; }
     public void setLastActiveAt(LocalDateTime lastActiveAt) { this.lastActiveAt = lastActiveAt; }
 
@@ -103,9 +132,28 @@ public class ConsultationVO {
         vo.setSummaryStatus(c.getSummaryStatus());
         vo.setSummaryStatusText(SummaryStatus.nameOf(c.getSummaryStatus()));
         vo.setConclusion(c.getConclusion());
+        vo.setDurationDesc(c.getDurationDesc());
+        vo.setSeverityScale(c.getSeverityScale());
+        vo.setHistoryFlags(parseHistory(c.getHistoryFlags()));
+        vo.setOnsetType(c.getOnsetType());
         vo.setLastActiveAt(c.getLastActiveAt());
         vo.setClosedAt(c.getClosedAt());
         vo.setCreateTime(c.getCreateTime());
         return vo;
+    }
+
+    /**
+     * history_flags 存的是 JSON 数组字符串，解析失败一律当没填 ——
+     * 一个脏字段不应该让整张问诊单详情打不开。
+     */
+    private static List<String> parseHistory(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return new ObjectMapper().readValue(json, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

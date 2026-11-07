@@ -118,6 +118,11 @@ CREATE TABLE `consultation` (
     `patient_id`      INT          NOT NULL,
     `session_id`      VARCHAR(36)  NOT NULL,
     `chief_complaint` VARCHAR(500) NOT NULL,
+    -- 问诊信息卡（1.1 结构化采集）：可填可不填，模型拿不到就自己去问
+    `duration_desc`   VARCHAR(100) DEFAULT NULL,
+    `severity_scale`  TINYINT      DEFAULT NULL,
+    `history_flags`   VARCHAR(500) DEFAULT NULL,
+    `onset_type`      VARCHAR(20)  DEFAULT NULL,
     `status`          TINYINT      DEFAULT 0 NOT NULL,
     `severity`        TINYINT      DEFAULT 0 NOT NULL,
     `summary_status`  TINYINT      DEFAULT 0 NOT NULL,
