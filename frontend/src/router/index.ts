@@ -1,45 +1,47 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
+/**
+ * 路由表。
+ *
+ * <h3>为什么只剩这几条</h3>
+ *
+ * <p>这个项目现在只做一件事：在线问诊。原来那二十几条路由里，
+ * 疾病百科、药品查询、找医生、意见反馈、数据大屏、五个管理后台页面，
+ * 全部删掉了 —— 它们占着大部分路由表，却和「问诊」这个主线没有因果关系。
+ *
+ * <p>知识库（疾病/药品数据）没有被删，它退到了后端，变成 RAG 检索的底座。
+ * 用户不需要「查」它，它自己会在对话里出现。这才是它该有的位置。
+ */
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', name: 'home', component: () => import('@/pages/public/HomePage.vue') },
     { path: '/login', name: 'login', component: () => import('@/pages/public/LoginPage.vue') },
     { path: '/register', name: 'register', component: () => import('@/pages/public/RegisterPage.vue') },
-    { path: '/search', name: 'search', component: () => import('@/pages/public/SearchPage.vue') },
-    { path: '/illness/:id', name: 'illness-detail', component: () => import('@/pages/public/IllnessDetail.vue') },
-    { path: '/medicine/:id', name: 'medicine-detail', component: () => import('@/pages/public/MedicineDetail.vue') },
-    { path: '/illnesses', name: 'illnesses', component: () => import('@/pages/public/IllnessList.vue') },
-    { path: '/medicines', name: 'medicines', component: () => import('@/pages/public/MedicineList.vue') },
-    { path: '/doctors', name: 'doctors', component: () => import('@/pages/public/DoctorList.vue') },
-    { path: '/doctor/:id', name: 'doctor-detail', component: () => import('@/pages/public/DoctorDetail.vue') },
-    { path: '/ai-doctor', name: 'ai-doctor', meta: { requiresAuth: true }, component: () => import('@/pages/user/AiDoctorPage.vue') },
-    { path: '/consultation/:id?', name: 'consultation', meta: { requiresAuth: true }, component: () => import('@/pages/user/ConsultationPage.vue') },
-    { path: '/profile', name: 'profile', meta: { requiresAuth: true }, component: () => import('@/pages/user/ProfilePage.vue') },
-    { path: '/feedback', name: 'feedback', meta: { requiresAuth: true }, component: () => import('@/pages/user/FeedbackPage.vue') },
-    { path: '/admin/dashboard', name: 'dashboard', meta: { requiresAuth: true, requiresAdmin: true }, component: () => import('@/pages/admin/DashboardPage.vue') },
-    { path: '/admin/illnesses', name: 'manage-illnesses', meta: { requiresAuth: true, requiresAdmin: true }, component: () => import('@/pages/admin/IllnessManage.vue') },
-    { path: '/admin/medicines', name: 'manage-medicines', meta: { requiresAuth: true, requiresAdmin: true }, component: () => import('@/pages/admin/MedicineManage.vue') },
-    { path: '/admin/doctors', name: 'manage-doctors', meta: { requiresAuth: true, requiresAdmin: true }, component: () => import('@/pages/admin/DoctorManage.vue') },
-    { path: '/admin/feedbacks', name: 'manage-feedbacks', meta: { requiresAuth: true, requiresAdmin: true }, component: () => import('@/pages/admin/FeedbackManage.vue') },
-    { path: '/admin/users', name: 'manage-users', meta: { requiresAuth: true, requiresAdmin: true }, component: () => import('@/pages/admin/UserManage.vue') },
+    {
+      path: '/consultation/:id?',
+      name: 'consultation',
+      meta: { requiresAuth: true },
+      component: () => import('@/pages/user/ConsultationPage.vue'),
+    },
+    {
+      path: '/profile',
+      name: 'profile',
+      meta: { requiresAuth: true },
+      component: () => import('@/pages/user/ProfilePage.vue'),
+    },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/pages/public/NotFound.vue') },
   ],
   scrollBehavior(to, from, savedPosition) {
     return savedPosition || { top: 0 }
-  }
+  },
 })
 
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('accessToken')
-  const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
 
   if (to.meta.requiresAuth && !token) {
     next({ name: 'login', query: { redirect: to.fullPath } })
-    return
-  }
-  if (to.meta.requiresAdmin && userInfo.roleStatus !== 1) {
-    next({ name: 'home' })
     return
   }
   next()

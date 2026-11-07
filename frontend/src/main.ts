@@ -17,9 +17,8 @@ const app = createApp(App)
 //   }
 //
 // 它把 Element Plus 的约 300 个图标全部注册成全局组件。问题是：
-// 1. 项目实际只用到 4 个图标（Search / User / Lock / FirstAidKit / ChatDotRound / UserFilled），
-//    而且全都是**在使用处 import 后直接绑定**（:prefix-icon="Search" 或 <FirstAidKit />），
-//    从来不依赖全局注册；
+// 1. 全项目用到的图标不到十个（FirstAidKit / ChatDotRound / Document / WarningFilled
+//    等），而且全都是**在使用处 import 后直接绑定**，从来不依赖全局注册；
 // 2. 全量注册会让每个图标都进主包，形成"每次有人加了一个图标，包就大一点"的单向增长；
 // 3. 更要紧的是它挡住了 tree-shaking——import * 本身就无法摇掉。
 //
