@@ -33,12 +33,17 @@ import static org.mockito.Mockito.when;
 class KnowledgeRetrievalServiceTest {
 
     private RetrievalStrategy strategy;
+    private com.mediquery.module.illness.mapper.IllnessMedicineRelMapper relMapper;
     private KnowledgeRetrievalService service;
 
     @BeforeEach
     void setUp() {
         strategy = mock(RetrievalStrategy.class);
-        service = new KnowledgeRetrievalService(strategy);
+        relMapper = mock(com.mediquery.module.illness.mapper.IllnessMedicineRelMapper.class);
+        // 默认查不到关联药品：绝大多数用例关心的不是这条链路，
+        // 显式给个空列表，免得 Mockito 对未打桩的 List 返回 null 干扰断言。
+        when(relMapper.findMedicinesByIllnessId(anyInt())).thenReturn(List.of());
+        service = new KnowledgeRetrievalService(strategy, relMapper);
     }
 
     private static Illness illness(int id, String name, String cause, String symptom) {
@@ -214,5 +219,36 @@ class KnowledgeRetrievalServiceTest {
 
         // RECALL_LIMIT = 50
         verify(strategy).recallIllnesses(anyList(), org.mockito.ArgumentMatchers.eq(50));
+    }
+
+    @Test
+    @DisplayName("关联药品要补齐再进上下文：召回实体自带的 medicines 永远是 null")
+    void medicinesAreAttachedBeforeFormatting() {
+        when(strategy.recallIllnesses(anyList(), anyInt())).thenReturn(List.of(
+                illness(7, "扁桃体炎", "细菌感染", "咽痛发热")));
+        when(strategy.recallMedicines(anyList(), anyInt())).thenReturn(List.of());
+        when(relMapper.findMedicinesByIllnessId(7)).thenReturn(List.of(
+                medicine(3, "阿莫西林", "抗生素", "用于细菌感染")));
+
+        var context = service.retrieve("扁桃体炎");
+
+        // 这条断言之所以必要：medicines 是 @TableField(exist = false) 的关联字段，
+        // 召回拿到的实体里它恒为 null。不补就得靠「碰巧有人填过它」，
+        // 而唯一填它的 IllnessService.getById 挂在已删除的疾病详情页上。
+        assertThat(context).contains("关联药品").contains("阿莫西林");
+        verify(relMapper).findMedicinesByIllnessId(7);
+    }
+
+    @Test
+    @DisplayName("关联表查失败只少一段上下文，不能把整轮问诊带挂")
+    void relLookupFailureIsSwallowed() {
+        when(strategy.recallIllnesses(anyList(), anyInt())).thenReturn(List.of(
+                illness(7, "扁桃体炎", "细菌感染", "咽痛发热")));
+        when(strategy.recallMedicines(anyList(), anyInt())).thenReturn(List.of());
+        when(relMapper.findMedicinesByIllnessId(7)).thenThrow(new RuntimeException("connection reset"));
+
+        var context = service.retrieve("扁桃体炎");
+
+        assertThat(context).contains("扁桃体炎").doesNotContain("关联药品");
     }
 }

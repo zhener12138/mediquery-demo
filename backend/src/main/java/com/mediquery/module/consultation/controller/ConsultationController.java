@@ -101,18 +101,6 @@ public class ConsultationController {
     }
 
     /**
-     * 读取问诊信息卡（1.1 结构化采集）。
-     *
-     * <p>返回的是整张卡：已填的槽位有值，没填的是 null —— 前端靠 null 渲染「未填」。
-     */
-    @GetMapping("/{id}/intake")
-    @PreAuthorize("@consultGuard.isOwner(#id, authentication)")
-    public Result<ConsultationVO> intake(@PathVariable Integer id,
-                                         org.springframework.security.core.Authentication auth) {
-        return Result.success(consultationService.detail(id, ConsultationGuard.currentUserId(auth)));
-    }
-
-    /**
      * 补录/修正问诊信息卡。
      *
      * <p>传 null 的槽位不动，只更新明确给值的字段；进行中的单子随时可改，

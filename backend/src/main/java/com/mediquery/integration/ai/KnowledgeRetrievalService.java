@@ -1,9 +1,12 @@
 package com.mediquery.integration.ai;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.mediquery.module.illness.entity.Illness;
+import com.mediquery.module.illness.mapper.IllnessMedicineRelMapper;
 import com.mediquery.module.medicine.entity.Medicine;
 
 import java.util.ArrayList;
@@ -44,9 +47,14 @@ public class KnowledgeRetrievalService {
     private static final int RECALL_LIMIT = 50;
 
     private final RetrievalStrategy retrievalStrategy;
+    private final IllnessMedicineRelMapper relMapper;
 
-    public KnowledgeRetrievalService(RetrievalStrategy retrievalStrategy) {
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeRetrievalService.class);
+
+    public KnowledgeRetrievalService(RetrievalStrategy retrievalStrategy,
+                                     IllnessMedicineRelMapper relMapper) {
         this.retrievalStrategy = retrievalStrategy;
+        this.relMapper = relMapper;
     }
 
     /**
@@ -94,13 +102,42 @@ public class KnowledgeRetrievalService {
     /** 批量召回后按相关度取 Top3 */
     private List<Illness> rankIllnesses(List<String> keywords) {
         var candidates = retrievalStrategy.recallIllnesses(keywords, RECALL_LIMIT);
-        return candidates.stream()
+        var ranked = candidates.stream()
                 .map(i -> new Scored<>(i, scoreIllness(i, keywords)))
                 .filter(s -> s.score > 0)
                 .sorted(Comparator.comparingInt((Scored<Illness> s) -> s.score).reversed())
                 .limit(TOP_K)
                 .map(s -> s.item)
                 .collect(Collectors.toList());
+
+        // 只给最终入选的 Top3 补关联药品，不是给整个 50 条召回窗口补：
+        // 排名之外的条目根本不会进上下文，逐条查关联表纯属浪费 SQL。
+        for (var illness : ranked) attachMedicines(illness);
+        return ranked;
+    }
+
+    /**
+     * 补关联药品。
+     *
+     * <p>{@code Illness.medicines} 是 {@code @TableField(exist = false)} 的关联字段，
+     * 召回拿到的实体里它永远是 null。以前只有
+     * {@link com.mediquery.module.illness.service.IllnessService#getById} 会去查关联表，
+     * 而它挂在「疾病详情页」上 —— 详情页随重构删掉了，于是 {@link #formatIllness}
+     * 里那句「关联药品」在生产路径上从来没输出过，模型拿到的永远是半条知识。
+     *
+     * <p>语义是「这一篇疾病通常用什么药」，给模型做判断参考，不构成用药推荐。
+     */
+    private void attachMedicines(Illness illness) {
+        if (illness == null || illness.getId() == null || illness.getMedicines() != null) return;
+        try {
+            var medicines = relMapper.findMedicinesByIllnessId(illness.getId());
+            illness.setMedicines(medicines == null ? List.of() : medicines);
+        } catch (Exception e) {
+            // 关联表查失败不该让整轮问诊挂掉：没有关联药品只是少一点上下文，
+            // 而抛出去会让用户连回复都收不到。
+            log.warn("补关联药品失败 illnessId={}，跳过", illness.getId(), e);
+            illness.setMedicines(List.of());
+        }
     }
 
     /** 批量召回后按相关度取 Top3 */
@@ -219,6 +256,10 @@ public class KnowledgeRetrievalService {
             sb.append("- 症状：").append(i.getSymptom()).append("\n");
         if (StringUtils.hasText(i.getSpecialSymptom()))
             sb.append("- 特殊说明：").append(i.getSpecialSymptom()).append("\n");
+        // 科室名来自 illness_category 的回填（IllnessService#fillCategoryNames）。
+        // 有了这一行，模型建议科室时是照着真实存在过的科室说，而不是自由发挥。
+        if (StringUtils.hasText(i.getCategoryName()))
+            sb.append("- 常见科室：").append(i.getCategoryName()).append("\n");
         var medicines = i.getMedicines();
         if (medicines != null && !medicines.isEmpty()) {
             var names = medicines.stream().map(Medicine::getName).collect(Collectors.joining("、"));

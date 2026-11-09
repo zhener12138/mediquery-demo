@@ -23,6 +23,13 @@
           </el-button>
           <span class="hero-note">无需挂号 · 不替代面诊</span>
         </div>
+
+        <!-- 真实计数：接口拿不到就整条不显示，不编数字 -->
+        <div v-if="stats" class="hero-stats">
+          <span>已完成 <b>{{ stats.consultationCount }}</b> 次问诊</span>
+          <span class="sep"></span>
+          <span>知识库收录 <b>{{ stats.illnessCount }}</b> 种疾病 · <b>{{ stats.medicineCount }}</b> 种药品</span>
+        </div>
       </div>
     </section>
 
@@ -118,10 +125,34 @@ import {
   Check,
   Aim,
 } from '@element-plus/icons-vue'
+import { onMounted, ref } from 'vue'
+import api from '@/api'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
+
+interface HomeStats {
+  consultationCount: number
+  illnessCount: number
+  medicineCount: number
+}
+
+/**
+ * 落地页底部的真实计数。
+ *
+ * <p>拿不到就保持 null，整条不渲染——首页宁可少一行，也不摆一个编出来的数字。
+ * 落成空串的兜底（0 次问诊）看着更像真的，反而更容易误导。
+ */
+const stats = ref<HomeStats | null>(null)
+
+onMounted(async () => {
+  try {
+    stats.value = await api.get('/stats')
+  } catch {
+    stats.value = null
+  }
+})
 
 const steps = [
   {
@@ -253,6 +284,26 @@ function startNow() {
 }
 .cta .mr { margin-right: 6px; }
 .hero-note { font-size: 13px; color: #909399; }
+
+.hero-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+  font-size: 13px;
+  color: #7a8291;
+}
+.hero-stats b {
+  font-weight: 600;
+  color: #303133;
+  font-variant-numeric: tabular-nums;
+}
+.hero-stats .sep {
+  width: 1px;
+  height: 12px;
+  background: #dcdfe6;
+}
 
 /* ---------- 流程 ---------- */
 .flow {

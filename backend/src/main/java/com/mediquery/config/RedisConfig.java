@@ -6,18 +6,12 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.redis.cache.RedisCacheConfiguration;
-import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
-import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
-
-import java.time.Duration;
 
 /**
  * Redis 序列化配置。
@@ -41,24 +35,30 @@ import java.time.Duration;
  *
  * <ul>
  *   <li>{@code com.mediquery.} 下的所有类 —— 我们自己的实体和 DTO，可控；</li>
- *   <li>{@code java.util.} —— 缓存的值可能是 List / Map / Set，这些必须能还原；</li>
- *   <li>{@code java.time.} —— LocalDateTime 等，实体的 createTime/updateTime 要用；</li>
+ *   <li>{@code java.util.} —— 值可能是 List / Map / Set，这些必须能还原；</li>
+ *   <li>{@code java.time.} —— LocalDateTime 等；</li>
  *   <li>{@code java.math.} —— {@code Medicine.price} 是 {@code BigDecimal}。
- *       这条是后来补的：少了它，药品详情首次走库正常、再次命中缓存 500。</li>
+ *       这条是当年为药品详情缓存补的，缓存已经删了，但白名单是通用的防御配置，
+ *       留着的代价是一条字符串，删掉的代价是将来谁再往 Redis 塞 BigDecimal 就炸。</li>
  * </ul>
  *
- * <p>其余一律拒绝。将来如果新加了实体在别的包下，读缓存会抛
+ * <p>其余一律拒绝。将来如果新加了实体在别的包下，读 Redis 会抛
  * {@code InvalidTypeIdException}，那时把它加进白名单即可——
  * 这个报错本身就是提醒：有个不在白名单里的类被序列化进去了。
  *
- * <h3>不用 LaissezFaire 之后，序列化格式变了吗</h3>
+ * <h3>这里现在还剩什么</h3>
  *
- * <p>变了，但只是"能不能读回来"的规则变了，payload 里仍然写 {@code @class}。
- * 唯一要注意的是：旧版本写进 Redis 的缓存里可能有过白名单之外的类型，
- * 那些键读回来会失败。缓存本来就是可以丢的数据，清掉即可（或等 TTL 过期）。
+ * <p>只剩 {@link RedisTemplate} 一个 bean。{@code @EnableCaching} 和
+ * {@code RedisCacheManager} 随「疾病/药品百科详情缓存」一起删了 ——
+ * 那两个 {@code @Cacheable} 所在的 Service 方法已经没人调用，
+ * 留着一个没有任何 {@code @Cacheable} 使用的 CacheManager 只会让人以为
+ * 项目在某处缓存了东西。
+ *
+ * <p>真正在用 Redis 的还是两处：登录验证码/防爆破（{@code AuthService}）
+ * 和 RAG 上下文缓存（{@code DashScopeClient} 的 {@code rag:ctx:*}）。
+ * 它们走 {@code RedisTemplate} 直接读写字符串，不经过 Spring Cache 抽象。
  */
 @Configuration
-@EnableCaching
 public class RedisConfig {
 
     /**
@@ -112,21 +112,5 @@ public class RedisConfig {
         template.setHashValueSerializer(createJsonSerializer());
         template.afterPropertiesSet();
         return template;
-    }
-
-    @Bean
-    public RedisCacheManager cacheManager(RedisConnectionFactory factory) {
-        var serializer = createJsonSerializer();
-        var config = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMinutes(30))
-                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(serializer))
-                // 缓存 null 会让 @Cacheable 把"查不到"也缓存住，而 Redis 不能存 null 值，
-                // 会直接抛 IllegalArgumentException。禁止掉，让空值走 unless 分支。
-                .disableCachingNullValues();
-
-        return RedisCacheManager.builder(factory)
-                .cacheDefaults(config)
-                .build();
     }
 }
