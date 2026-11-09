@@ -49,7 +49,7 @@
       │  └─ 命中症状词   → 记录建议科室
       ▼
 SSE 多轮对话（逐字流式）
-      │  ├─ RAG 召回：疾病库 / 药品库全文索引辅助判断
+      │  ├─ RAG 召回：症状图谱两跳（症状 → 疾病 → 科室），未命中退回全文索引
       │  └─ 历史上下文 + 会话上下文缓存（Redis，24 小时）
       ▼
 完结问诊
@@ -134,6 +134,10 @@ mysql -h127.0.0.1 -P3306 -uroot -p -e "CREATE DATABASE IF NOT EXISTS mediquery \
 # 不给也能跑，只是 AI 没有知识库可召回、首页看不出东西
 mysql -h127.0.0.1 -P3306 -uroot -p mediquery < backend/src/main/resources/db/seed.sql
 
+# 2.2 可选：灌症状图谱（53 症状 / 144 同义词 / 61 疾病-症状边 / 14 科室边）
+# 这一步才是「拉不出来，蹲半天」能召回到便秘的原因；不灌就只能走老的全文索引
+mysql -h127.0.0.1 -P3306 -uroot -p mediquery < backend/src/main/resources/db/seed-knowledge.sql
+
 # 3. 启动后端
 cd backend
 mvn spring-boot:run
@@ -180,6 +184,7 @@ mediquery-demo/
 │   │   │   │   ├── security/         # 归属校验（@consultGuard）
 │   │   │   │   └── vo/               # 问诊单 / 小结
 │   │   │   ├── illness/              # 疾病知识底座（RAG 召回用，无对外页面）
+│   │   │   ├── knowledge/            # 症状图谱：同义词归一 / 疾病-症状边 / 科室优先级
 │   │   │   ├── medicine/             # 药品知识底座（同上）
 │   │   │   ├── stats/                # 公开统计（首页用）
 │   │   │   └── operationlog/         # 审计日志
@@ -190,8 +195,9 @@ mediquery-demo/
 │   └── src/main/resources/
 │       ├── application.yml
 │       └── db/
-│           ├── migration/            # Flyway 迁移（V1 基线 / V2 信息卡四列）
-│           └── seed.sql              # 种子数据（10 疾病 / 7 药品 / 2 账户）
+│           ├── migration/            # Flyway 迁移（V1 基线 / V2 信息卡 / V3 清遗留 / V4 症状图谱）
+│           ├── seed.sql              # 种子数据（10 疾病 / 7 药品 / 2 账户）
+│           └── seed-knowledge.sql    # 症状图谱数据（53 症状 / 144 同义词 / 61 症状边 / 14 科室边）
 │
 ├── frontend/                         # Vue 3 前端
 │   ├── src/
@@ -210,6 +216,8 @@ mediquery-demo/
 ```
 
 > **知识库退到后端**：疾病库和药品库不再是用户能「逛」的页面，它们变成 RAG 的召回底座。用户不需要知道有这两张表。
+>
+> **症状是独立的实体**：`symptom` + `symptom_alias` 把「拉不出来 / 蹲半天 / 排便费劲」归一到「排便费力」，再经 `disease_symptom` 走两跳到疾病，最后按 `disease_department.priority` 出科室。老的全文索引作为兜底保留——图谱没命中时才走它。
 
 ---
 

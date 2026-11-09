@@ -162,6 +162,16 @@ public class ConsultationMessageService {
             var retrieved = knowledgeService.retrieveWithSources(message);
             var knowledge = triage.toPromptPrefix() + knownFacts + retrieved.context();
             start.put("sources", retrieved.sources());
+            // 科室有两个来源：规则层看关键词，图谱层看「命中的疾病通常挂哪个科」。
+            // 规则层先掷出结果就用规则层的（它是按命中词数排的，对口语更敏感）；
+            // 规则层没话说时才用图谱的 —— 例如「拉不出来，蹲半天」里没有任何科室关键词，
+            // 但图谱已经从「便秘」这条边知道了该去内科。
+            // start 和 meta 必须用同一个值，否则前端先看到内科、滚动后又变成空，
+            // 那种「提示闪一下消失」比没有提示更让人不信任。
+            var suggestDept = triage.departments().isEmpty()
+                    ? retrieved.departments()
+                    : triage.departments();
+            start.put("suggestDept", suggestDept);
             send(emitter, start);
 
             // 真流式：模型吐一片就转发一片，不再等全文。
@@ -188,7 +198,7 @@ public class ConsultationMessageService {
             meta.put("type", "meta");
             meta.put("severity", null);
             meta.put("triageSeverity", triage.severity());
-            meta.put("suggestDept", triage.departments());
+            meta.put("suggestDept", suggestDept);
             meta.put("note", "严重度在问诊完结、生成小结后确定");
             send(emitter, meta);
 

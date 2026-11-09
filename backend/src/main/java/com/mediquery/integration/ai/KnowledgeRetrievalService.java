@@ -7,6 +7,10 @@ import org.springframework.util.StringUtils;
 
 import com.mediquery.module.illness.entity.Illness;
 import com.mediquery.module.illness.mapper.IllnessMedicineRelMapper;
+import com.mediquery.module.knowledge.dto.NormalizedSymptom;
+import com.mediquery.module.knowledge.entity.DiseaseDepartment;
+import com.mediquery.module.knowledge.dto.DiseaseMedicine;
+import com.mediquery.module.knowledge.service.GraphRetrievalService;
 import com.mediquery.module.medicine.entity.Medicine;
 
 import java.util.ArrayList;
@@ -48,13 +52,16 @@ public class KnowledgeRetrievalService {
 
     private final RetrievalStrategy retrievalStrategy;
     private final IllnessMedicineRelMapper relMapper;
+    private final GraphRetrievalService graphRetrievalService;
 
     private static final Logger log = LoggerFactory.getLogger(KnowledgeRetrievalService.class);
 
     public KnowledgeRetrievalService(RetrievalStrategy retrievalStrategy,
-                                     IllnessMedicineRelMapper relMapper) {
+                                     IllnessMedicineRelMapper relMapper,
+                                     GraphRetrievalService graphRetrievalService) {
         this.retrievalStrategy = retrievalStrategy;
         this.relMapper = relMapper;
+        this.graphRetrievalService = graphRetrievalService;
     }
 
     /**
@@ -62,7 +69,13 @@ public class KnowledgeRetrievalService {
      * <p>以前只返回 String，命中的条目名在拼进上下文的那一刻就丢了 ——
      * 想在前端标一句「参考了：病毒性感冒」都做不到，用户只能看到一段没有出处的黑盒回答。
      */
-    public record Retrieved(String context, List<String> sources) {}
+    public record Retrieved(String context, List<String> sources, List<String> departments) {
+
+        /** 老调用方（只关心文本和来源）的快捷构造 */
+        public Retrieved(String context, List<String> sources) {
+            this(context, sources, List.of());
+        }
+    }
 
     /**
      * 根据用户输入检索相关知识，格式化为上下文文本。
@@ -76,6 +89,13 @@ public class KnowledgeRetrievalService {
     public Retrieved retrieveWithSources(String userMessage) {
         if (!StringUtils.hasText(userMessage)) return new Retrieved("", List.of());
 
+        // 先走图谱：症状归一 → 疾病 → 科室/带条件的用药。
+        // 这条路能回答「睡不着」这类老链路注定零命中的说法（详见 GraphRetrievalService 的类注释）。
+        var graph = retrieveFromGraph(userMessage);
+        if (!graph.isEmpty()) return formatGraph(graph);
+
+        // 图谱没命中，说明用户说的症状还没进词表。这时退回关键词检索 ——
+        // 宁可给一条粗一点的上下文，也不要因为知识库没录全就什么都不给。
         var keywords = tokenize(userMessage);
         if (keywords.isEmpty()) return new Retrieved("", List.of());
 
@@ -97,6 +117,152 @@ public class KnowledgeRetrievalService {
         for (var i : illnesses) sources.add(i.getName());
         for (var m : medicines) sources.add(m.getName());
         return new Retrieved(context.toString(), List.copyOf(sources));
+    }
+
+    /**
+     * 走图谱检索，失败了就当没命中。
+     *
+     * <p>这一个 try 是整条链路的保险丝：知识库表缺失、SQL 语法错、数据库连不上 ——
+     * 任何一种都只会让这一轮少一点上下文，绝不会让用户收不到回复。
+     * 老的关键词检索还在后面兜底，所以最坏情况就是回到改造前的水平。
+     */
+    private GraphRetrievalService.Result retrieveFromGraph(String userMessage) {
+        try {
+            return graphRetrievalService.retrieve(userMessage);
+        } catch (Exception e) {
+            log.warn("图谱检索异常，退回关键词检索", e);
+            return GraphRetrievalService.Result.empty();
+        }
+    }
+
+    /**
+     * 把图谱结果排成给模型看的上下文。
+     *
+     * <p>与 {@link #formatIllness} 的差别，逐条都是为了「少说错话」：
+     * <ul>
+     *   <li><b>先说识别到了什么症状</b>，并回显用户原话。模型会照着这个措辞复述
+     *       （「你说的睡不着，对应失眠」），用户立刻知道系统听懂了没有；</li>
+     *   <li><b>科室带优先级</b>：门诊建议只给第一个，其余写「也可考虑」。
+     *       平铺五个科室让用户自己挑，等于没建议；</li>
+     *   <li><b>用药必须带条件</b>：没有 indication 的药直接不输出。这条最关键 ——
+     *       阿莫西林三个字裸奔出去，就是在暗示「感冒吃这个」；</li>
+     *   <li><b>红旗单独列</b>：不进主结论，单独一段「这些情况要立刻就医」，
+     *       免得模型把它当成鉴别诊断的一部分。</li>
+     * </ul>
+     */
+    private Retrieved formatGraph(GraphRetrievalService.Result result) {
+        var sb = new StringBuilder();
+
+        var symptoms = result.symptoms();
+        if (!symptoms.isEmpty()) {
+            sb.append("【本轮识别到的症状】\n");
+            for (var s : symptoms) {
+                sb.append("- ").append(s.getSymptomName());
+                // 只有在用户说的不是标准名时才回显，否则会写出「失眠（你说的是失眠）」
+                if (s.getMatchedText() != null && !s.getMatchedText().equals(s.getSymptomName())) {
+                    sb.append("（你说的是「").append(s.getMatchedText()).append("」）");
+                }
+                if (StringUtils.hasText(s.getBodyPart())) {
+                    sb.append(" · 部位：").append(s.getBodyPart());
+                }
+                sb.append("\n");
+            }
+            sb.append("\n");
+        }
+
+        sb.append("【参考知识库 · 可能相关的疾病】\n");
+        var sources = new LinkedHashSet<String>();
+        var departmentHints = new LinkedHashSet<String>();
+        for (var entry : result.entries()) {
+            var primary = entry.primaryDepartment();
+            if (StringUtils.hasText(primary)) departmentHints.add(primary);
+            var d = entry.disease();
+            sb.append("## 疾病：").append(d.getIllnessName()).append("\n");
+            sources.add(d.getIllnessName());
+            if (StringUtils.hasText(d.getCause()))
+                sb.append("- 病因：").append(d.getCause()).append("\n");
+            if (StringUtils.hasText(d.getSymptom()))
+                sb.append("- 典型表现：").append(d.getSymptom()).append("\n");
+            if (StringUtils.hasText(d.getSpecialSymptom()))
+                sb.append("- 特殊说明：").append(d.getSpecialSymptom()).append("\n");
+            appendDepartments(sb, entry.departments());
+            appendMedicines(sb, entry.medicines());
+            sb.append("\n");
+        }
+
+        var redFlags = collectRedFlagDiseases(result);
+        if (!redFlags.isEmpty()) {
+            sb.append("【需要立即就医的提示】\n");
+            sb.append("- 以下疾病在你的描述里出现了「红旗症状」：")
+              .append(String.join("、", redFlags)).append("\n");
+            sb.append("- 红旗症状的意思是「这个表现本身就该马上看医生」，"
+                      + "不代表一定得了这些病。请优先排除紧急情况。\n\n");
+        }
+
+        return new Retrieved(sb.toString(), List.copyOf(sources), List.copyOf(departmentHints));
+    }
+
+    private void appendDepartments(StringBuilder sb, List<DiseaseDepartment> departments) {
+        if (departments == null || departments.isEmpty()) return;
+        var first = departments.get(0);
+        sb.append("- 建议科室：").append(first.getDepartment());
+        if (StringUtils.hasText(first.getReason())) {
+            sb.append("（").append(first.getReason()).append("）");
+        }
+        sb.append("\n");
+        if (departments.size() > 1) {
+            var others = departments.stream().skip(1)
+                    .map(DiseaseDepartment::getDepartment)
+                    .collect(Collectors.joining("、"));
+            sb.append("- 也可考虑：").append(others).append("\n");
+        }
+    }
+
+    /**
+     * 用药边：没有适应症说明的药一律不输出。
+     *
+     * <p>这不是保守，是纠错。改造前 {@code illness_medicine_rel} 只有两个外键，
+     * 于是「阿莫西林 → 病毒性感冒」这条边在库里长得和一条正确边一模一样，
+     * 模型照着念就是在给病毒感染推抗生素。加一列 {@code indication} 之后，
+     * 写不出「什么情况下才用」的边自然就消失了 —— 补不出来，就说明它本来就不该存在。
+     */
+    private void appendMedicines(StringBuilder sb, List<DiseaseMedicine> medicines) {
+        if (medicines == null || medicines.isEmpty()) return;
+        var usable = medicines.stream()
+                .filter(m -> StringUtils.hasText(m.getIndication()))
+                .toList();
+        if (usable.isEmpty()) {
+            sb.append("- 用药提示：知识库里没有针对本病的明确用药建议，不要自行服药\n");
+            return;
+        }
+        for (var m : usable) {
+            sb.append("- 用药提示：").append(m.getMedicineName())
+              .append(" —— ").append(m.getIndication());
+            var line = lineLabel(m.getLineOfTreatment());
+            if (line != null) sb.append("；").append(line);
+            sb.append("\n");
+        }
+    }
+
+    /** 治疗线转成人话。0 / null 表示未分级，不输出，免得模型把「未分级」念成「随便用」。 */
+    private static String lineLabel(Integer lineOfTreatment) {
+        if (lineOfTreatment == null) return null;
+        return switch (lineOfTreatment) {
+            case 1 -> "一线用药";
+            case 2 -> "二线用药";
+            case 3 -> "需医生评估后考虑";
+            default -> null;
+        };
+    }
+
+    private static List<String> collectRedFlagDiseases(GraphRetrievalService.Result result) {
+        var out = new ArrayList<String>();
+        for (var entry : result.entries()) {
+            if (Boolean.TRUE.equals(entry.disease().getHasRedFlag())) {
+                out.add(entry.disease().getIllnessName());
+            }
+        }
+        return out;
     }
 
     /** 批量召回后按相关度取 Top3 */

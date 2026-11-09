@@ -1,6 +1,7 @@
 package com.mediquery.integration.ai;
 
 import com.mediquery.module.illness.entity.Illness;
+import com.mediquery.module.knowledge.service.GraphRetrievalService;
 import com.mediquery.module.illness.service.IllnessService;
 import com.mediquery.module.medicine.entity.Medicine;
 import com.mediquery.module.medicine.service.MedicineService;
@@ -13,6 +14,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -34,6 +36,7 @@ class KnowledgeRetrievalServiceTest {
 
     private RetrievalStrategy strategy;
     private com.mediquery.module.illness.mapper.IllnessMedicineRelMapper relMapper;
+    private GraphRetrievalService graphRetrievalService;
     private KnowledgeRetrievalService service;
 
     @BeforeEach
@@ -43,7 +46,12 @@ class KnowledgeRetrievalServiceTest {
         // 默认查不到关联药品：绝大多数用例关心的不是这条链路，
         // 显式给个空列表，免得 Mockito 对未打桩的 List 返回 null 干扰断言。
         when(relMapper.findMedicinesByIllnessId(anyInt())).thenReturn(List.of());
-        service = new KnowledgeRetrievalService(strategy, relMapper);
+        // 图谱检索默认空命中：这一半的用例验证的是「关键词检索」那条老路径，
+        // 图谱命中会短路它，所以必须显式关掉。图谱自己的语义另有专门用例。
+        graphRetrievalService = mock(GraphRetrievalService.class);
+        when(graphRetrievalService.retrieve(anyString()))
+                .thenReturn(GraphRetrievalService.Result.empty());
+        service = new KnowledgeRetrievalService(strategy, relMapper, graphRetrievalService);
     }
 
     private static Illness illness(int id, String name, String cause, String symptom) {

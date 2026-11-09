@@ -54,6 +54,34 @@ CREATE TABLE `illness_category` (
     PRIMARY KEY (`id`)
 );
 
+DROP TABLE IF EXISTS `symptom`;
+CREATE TABLE `symptom` (
+    `id`          INT          NOT NULL AUTO_INCREMENT,
+    `name`        VARCHAR(100) NOT NULL,
+    `body_part`   VARCHAR(50)  DEFAULT NULL,
+    `category`    VARCHAR(50)  DEFAULT NULL,
+    `description` VARCHAR(500) DEFAULT NULL,
+    `status`      TINYINT      NOT NULL DEFAULT 1,
+    `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    `update_time` DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `uk_symptom_name` UNIQUE (`name`)
+);
+CREATE INDEX `idx_symptom_body_part` ON `symptom` (`body_part`);
+CREATE INDEX `idx_symptom_category` ON `symptom` (`category`);
+
+DROP TABLE IF EXISTS `symptom_alias`;
+CREATE TABLE `symptom_alias` (
+    `id`          INT           NOT NULL AUTO_INCREMENT,
+    `symptom_id`  INT           NOT NULL,
+    `alias`       VARCHAR(100)  NOT NULL,
+    `weight`      DECIMAL(3,2)  NOT NULL DEFAULT 1.00,
+    `create_time` DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `uk_alias` UNIQUE (`alias`)
+);
+CREATE INDEX `idx_alias_symptom` ON `symptom_alias` (`symptom_id`);
+
 DROP TABLE IF EXISTS `illness`;
 CREATE TABLE `illness` (
     `id`              INT          NOT NULL AUTO_INCREMENT,
@@ -70,6 +98,35 @@ CREATE TABLE `illness` (
     PRIMARY KEY (`id`)
 );
 CREATE INDEX `idx_category_id` ON `illness` (`category_id`);
+
+DROP TABLE IF EXISTS `disease_symptom`;
+CREATE TABLE `disease_symptom` (
+    `id`          INT          NOT NULL AUTO_INCREMENT,
+    `illness_id`  INT          NOT NULL,
+    `symptom_id`  INT          NOT NULL,
+    `weight`      DECIMAL(3,2) NOT NULL DEFAULT 1.00,
+    `is_cardinal` TINYINT      NOT NULL DEFAULT 0,
+    `is_red_flag` TINYINT      NOT NULL DEFAULT 0,
+    `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `uk_disease_symptom` UNIQUE (`illness_id`, `symptom_id`)
+);
+CREATE INDEX `idx_ds_symptom` ON `disease_symptom` (`symptom_id`);
+CREATE INDEX `idx_ds_illness` ON `disease_symptom` (`illness_id`);
+
+DROP TABLE IF EXISTS `disease_department`;
+CREATE TABLE `disease_department` (
+    `id`          INT          NOT NULL AUTO_INCREMENT,
+    `illness_id`  INT          NOT NULL,
+    `department`  VARCHAR(50)  NOT NULL,
+    `priority`    INT          NOT NULL DEFAULT 1,
+    `reason`      VARCHAR(200) DEFAULT NULL,
+    `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `uk_disease_department` UNIQUE (`illness_id`, `department`)
+);
+CREATE INDEX `idx_dd_illness` ON `disease_department` (`illness_id`);
+CREATE INDEX `idx_dd_department` ON `disease_department` (`department`);
 
 DROP TABLE IF EXISTS `medicine`;
 CREATE TABLE `medicine` (
@@ -94,9 +151,12 @@ CREATE TABLE `medicine` (
 
 DROP TABLE IF EXISTS `illness_medicine_rel`;
 CREATE TABLE `illness_medicine_rel` (
-    `id`          INT NOT NULL AUTO_INCREMENT,
-    `illness_id`  INT NOT NULL,
-    `medicine_id` INT NOT NULL,
+    `id`                INT          NOT NULL AUTO_INCREMENT,
+    `illness_id`        INT          NOT NULL,
+    `medicine_id`       INT          NOT NULL,
+    `indication`        VARCHAR(500) DEFAULT NULL,
+    `line_of_treatment` TINYINT      NOT NULL DEFAULT 0,
+    `evidence_level`    TINYINT      NOT NULL DEFAULT 0,
     PRIMARY KEY (`id`)
 );
 CREATE INDEX `idx_illness_id` ON `illness_medicine_rel` (`illness_id`);
