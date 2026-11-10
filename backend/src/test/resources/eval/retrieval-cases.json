@@ -226,5 +226,29 @@
     "expectDepartment": "内科",
     "expectRedFlag": true,
     "note": "呼吸困难是红旗；这条验的是红旗不会被「感冒只是小病」的直觉压下去"
+  },
+  {
+    "id": "c33",
+    "complaint": "咳嗽有黄痰，但没发烧，也不冷",
+    "expectDiseases": ["病毒性感冒"],
+    "expectDepartment": "内科",
+    "expectRedFlag": false,
+    "note": "明确否认发热和恶寒：风寒感冒靠「恶寒」撑分，这条最容易被它抢走"
+  },
+  {
+    "id": "c34",
+    "complaint": "嗓子疼，吞咽困难，但是没有发烧",
+    "expectDiseases": ["扁桃体炎"],
+    "expectDepartment": "耳鼻喉科",
+    "expectRedFlag": false,
+    "note": "扁桃体炎和感冒都写发热；否认发热后只剩咽痛+吞咽困难，这两条是扁桃体炎的核心边"
+  },
+  {
+    "id": "c35",
+    "complaint": "胃疼反酸，不恶心也不呕吐",
+    "expectDiseases": ["胃溃疡"],
+    "expectDepartment": "内科",
+    "expectRedFlag": false,
+    "note": "否认恶心/呕吐：这两条边在胃溃疡里权重低，但感冒类疾病也有，不该被它们带偏"
   }
 ]

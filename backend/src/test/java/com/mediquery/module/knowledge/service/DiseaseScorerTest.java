@@ -131,6 +131,52 @@ class DiseaseScorerTest {
         assertThat(DiseaseScorer.score(List.of(), Map.of(), 3)).isEmpty();
     }
 
+    @Test
+    @DisplayName("否认的症状不计分：靠「发热」撑起来的病会被拉到后面")
+    void deniedSymptomIsDiscounted() {
+        // 甲：只有「发热」一条边（weight 1.0）
+        // 乙：「咽痛」一条边（weight 0.7）
+        // 不否认时甲赢；患者说了「没有发烧」，甲的那条边一分不得，跌到乙后面
+        var edges = List.of(
+                edge(1, "靠发热撑的病", 1, false, new BigDecimal("1.0")),
+                edge(2, "靠咽痛的病", 2, false, new BigDecimal("0.7")));
+
+        var normal = DiseaseScorer.score(edges, Map.of(), 3);
+        var withDenial = DiseaseScorer.score(edges, Map.of(), List.of(1), 3);
+
+        assertThat(normal.get(0).getIllnessName()).isEqualTo("靠发热撑的病");
+        assertThat(withDenial.get(0).getIllnessName()).isEqualTo("靠咽痛的病");
+    }
+
+    @Test
+    @DisplayName("否认不删除候选：只剩它一个时仍然在列表里，只是分数为 0")
+    void denialNeverDropsTheOnlyCandidate() {
+        // 「宁可排错也不能漏掉」的底线：把可能正确的病直接踢出候选，
+        // 用户看到的是「系统没提这个病」，比排最后一行难发现得多
+        var edges = List.of(edge(1, "唯一的病", 1, false, new BigDecimal("1.0")));
+
+        var ranked = DiseaseScorer.score(edges, Map.of(), List.of(1), 3);
+
+        assertThat(ranked).hasSize(1);
+        assertThat(ranked.get(0).getScore()).isEqualByComparingTo("0.000");
+    }
+
+    @Test
+    @DisplayName("否认一个症状不影响它没挂的那些病")
+    void denialOnlyTouchesMatchingEdges() {
+        var edges = List.of(
+                edge(1, "有发热的病", 1, false, new BigDecimal("1.0")),
+                edge(2, "没写发热的病", 2, false, new BigDecimal("1.0")));
+
+        var ranked = DiseaseScorer.score(edges, Map.of(), List.of(1), 3);
+
+        // 甲被清零，乙原封不动 —— 两者的差距正是「否认」这件事的贡献
+        assertThat(ranked).extracting(h -> h.getIllnessName())
+                .containsExactly("没写发热的病", "有发热的病");
+        assertThat(ranked.get(1).getScore()).isEqualByComparingTo("0.000");
+        assertThat(ranked.get(0).getScore()).isEqualByComparingTo("1.000");
+    }
+
     private static SymptomDf df(int symptomId, int df) {
         var row = new SymptomDf();
         row.setSymptomId(symptomId);

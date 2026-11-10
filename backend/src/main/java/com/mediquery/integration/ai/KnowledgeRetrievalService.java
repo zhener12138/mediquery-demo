@@ -171,6 +171,8 @@ public class KnowledgeRetrievalService {
             sb.append("\n");
         }
 
+        appendDenied(sb, result.denied());
+
         sb.append("【参考知识库 · 可能相关的疾病】\n");
         var sources = new LinkedHashSet<String>();
         var departmentHints = new LinkedHashSet<String>();
@@ -203,6 +205,34 @@ public class KnowledgeRetrievalService {
         appendQuestions(sb, result.questions());
 
         return new Retrieved(sb.toString(), List.copyOf(sources), List.copyOf(departmentHints));
+    }
+
+    /**
+     * 患者明确否认的症状。
+     *
+     * <p>这一段存在的理由不是「记录得更全」，是<b>防止颠倒过来的事实</b>。
+     * 疾病条目里写着「发热为主」，患者上一句刚说「没有发烧」——
+     * 如果上下文里不写这一句，模型极大概率照着条目反问「有发热吗」，
+     * 或者更糟，直接说「你发热说明……」。患者已经主动排除的方向，
+     * 系统又捡回来，比压根不问更伤信任。
+     *
+     * <p>措辞上刻意写「按没有来理解，不要再问」，而不是「否认了发热」：
+     * 后者是给工程师看的术语，模型读了未必知道该怎么做。
+     */
+    private void appendDenied(StringBuilder sb, List<NormalizedSymptom> denied) {
+        if (denied == null || denied.isEmpty()) {
+            return;
+        }
+        sb.append("【患者明确否认的症状】\n");
+        for (var s : denied) {
+            sb.append("- ").append(s.getSymptomName());
+            if (s.getMatchedText() != null && !s.getMatchedText().equals(s.getSymptomName())) {
+                sb.append("（他说的原话是「").append(s.getMatchedText()).append("」）");
+            }
+            sb.append("\n");
+        }
+        sb.append("- 这些按「没有」来理解，不要再问一遍，也不要拿它们当理由推断病情；\n");
+        sb.append("- 但否认可信度低于肯定：如果别的表现强烈指向某个病，可以换个角度确认一次。\n\n");
     }
 
     /**

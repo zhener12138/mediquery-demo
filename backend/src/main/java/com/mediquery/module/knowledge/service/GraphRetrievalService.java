@@ -89,17 +89,24 @@ public class GraphRetrievalService {
      * 「本轮识别到的症状：失眠（你说的是"睡不着"）」，模型的措辞会立刻变得具体，
      * 而用户也能看出系统有没有听懂 —— 听不懂的时候，前端至少能显示它听成了什么。
      *
+     * <p>{@code denied} 是患者<b>明确否认</b>的症状，和 {@code symptoms}
+     * 一起带出去有两个用途：一是检索已经按它扣过分了，上下文里得说清楚
+     * 「他否认了发热」，否则模型会照着疾病条目里的「发热为主」反问一遍；
+     * 二是追问不能问已经答过的问题 —— 问「有没有发烧」而患者上一句刚说
+     * 「没有发烧」，是最伤信任的一种表现。
+     *
      * <p>{@code questions} 是「再问一句就能定案」的问题，不是知识。
      * 它和疾病列表是两种东西：疾病是「我猜你可能是这几个」，
      * 问题是「告诉我这一句，我就能猜到一两个」。混在一起写，模型会把两类
      * 都当成结论念出来。
      */
     public record Result(List<NormalizedSymptom> symptoms,
+                         List<NormalizedSymptom> denied,
                          List<Entry> entries,
                          List<FollowUpQuestionService.Question> questions) {
 
         public static Result empty() {
-            return new Result(List.of(), List.of(), List.of());
+            return new Result(List.of(), List.of(), List.of(), List.of());
         }
 
         public boolean isEmpty() {
@@ -116,31 +123,48 @@ public class GraphRetrievalService {
      */
     public Result retrieve(String text) {
         List<NormalizedSymptom> symptoms;
+        List<NormalizedSymptom> denied;
         try {
-            symptoms = normalizer.normalize(text);
+            var normalized = normalizer.normalizeWithNegatives(text);
+            symptoms = normalized.hits();
+            denied = normalized.denied();
         } catch (Exception e) {
             log.warn("症状归一化失败，本轮跳过图谱检索", e);
             return Result.empty();
         }
+        // 只否认、没承认：扣分无从谈起（没有任何一条边被命中），
+        // 但这两条信息对下游仍有意义 —— 患者说了「没有发烧」，模型不该反问他烧不烧。
         if (symptoms.isEmpty()) {
-            return Result.empty();
+            return denied.isEmpty() ? Result.empty()
+                    : new Result(List.of(), denied, List.of(), List.of());
         }
 
         var ids = symptoms.stream().map(NormalizedSymptom::getSymptomId).toList();
+        var deniedIds = denied.stream().map(NormalizedSymptom::getSymptomId).toList();
+
+        // 召回要连否认的症状一起查：一个病可能是靠「发热」才进候选的，
+        // 患者说「没有发烧」时它不该被直接排除（那会漏掉可能正确的病），
+        // 而应该被认出来、然后打折。只查承认的症状，打折就成了死代码。
+        var queryIds = new ArrayList<Integer>(ids);
+        for (var deniedId : deniedIds) {
+            if (!queryIds.contains(deniedId)) {
+                queryIds.add(deniedId);
+            }
+        }
 
         List<SymptomHit> ranked;
         try {
-            var edges = diseaseSymptomMapper.selectEdgesBySymptoms(ids);
+            var edges = diseaseSymptomMapper.selectEdgesBySymptoms(queryIds);
             if (edges == null || edges.isEmpty()) {
-                return Result.empty();
+                return new Result(symptoms, denied, List.of(), List.of());
             }
-            ranked = DiseaseScorer.score(edges, idfOf(ids), TOP_K);
+            ranked = DiseaseScorer.score(edges, idfOf(ids), deniedIds, TOP_K);
         } catch (Exception e) {
             log.warn("疾病召回或打分失败，本轮跳过图谱检索", e);
-            return Result.empty();
+            return new Result(symptoms, denied, List.of(), List.of());
         }
         if (ranked.isEmpty()) {
-            return Result.empty();
+            return new Result(symptoms, denied, List.of(), List.of());
         }
 
         var illnessIds = ranked.stream().map(SymptomHit::getIllnessId).toList();
@@ -156,9 +180,10 @@ public class GraphRetrievalService {
                     medicines.getOrDefault(hit.getIllnessId(), List.of())));
         }
 
-        var questions = pickQuestions(illnessIds, symptoms);
-        log.debug("图谱检索命中：症状={}，疾病={}，追问={}", symptoms.size(), entries.size(), questions.size());
-        return new Result(symptoms, entries, questions);
+        var questions = pickQuestions(illnessIds, symptoms, denied);
+        log.debug("图谱检索命中：症状={}，否认={}，疾病={}，追问={}",
+                symptoms.size(), denied.size(), entries.size(), questions.size());
+        return new Result(symptoms, denied, entries, questions);
     }
 
     /**
@@ -171,14 +196,20 @@ public class GraphRetrievalService {
      * <p>这一步失败不值得让整轮检索失败：没有追问，只是回复不够聪明。
      */
     private List<FollowUpQuestionService.Question> pickQuestions(List<Integer> illnessIds,
-                                                                 List<NormalizedSymptom> symptoms) {
+                                                                 List<NormalizedSymptom> symptoms,
+                                                                 List<NormalizedSymptom> denied) {
         if (illnessIds.size() < 2) {
             // 只有一个候选，没什么可鉴别的
             return List.of();
         }
         try {
             var views = diseaseSymptomMapper.selectSymptomsByIllnessIds(illnessIds);
-            return followUpQuestionService.pickQuestions(views, symptoms);
+            // 否认过的症状并进「已知」，追问层不必再区分「说过有」和「说过没有」——
+            // 两种情况下都不该再问一遍
+            var answered = new ArrayList<NormalizedSymptom>(symptoms.size() + denied.size());
+            answered.addAll(symptoms);
+            answered.addAll(denied);
+            return followUpQuestionService.pickQuestions(views, answered);
         } catch (Exception e) {
             log.warn("挑选追问失败 illnessIds={}，跳过", illnessIds, e);
             return List.of();

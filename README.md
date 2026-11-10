@@ -50,6 +50,8 @@
       ▼
 SSE 多轮对话（逐字流式）
       │  ├─ RAG 召回：症状图谱两跳（症状 → 疾病 → 科室），未命中退回全文索引
+      │  ├─ 打分：症状权重 × IDF，患者明确否认的症状一分不得
+      │  ├─ 追问：按鉴别力挑 1-2 个最能分开候选的点，让模型用自己的话问
       │  └─ 历史上下文 + 会话上下文缓存（Redis，24 小时）
       ▼
 完结问诊
@@ -251,11 +253,32 @@ mediquery-demo/
 
 | type | 时机 | 载荷 |
 |------|------|------|
-| `start` | 立刻，AI 吐第一个字之前 | `triageSeverity` / `redFlags` / `suggestDept` / `advice` |
+| `start` | 立刻，AI 吐第一个字之前 | `triageSeverity` / `redFlags` / `suggestDept` / `advice` / `sources`（本次召回的病名） |
 | `chunk` | 流式过程中 | `chunk`（增量文本） |
 | `meta` | 回复结束 | `triageSeverity` / `suggestDept`（`severity` 恒为 null，严重度由小结回顾性判断） |
 | `end` | 完全结束 | `summarizing` |
 | `error` | 异常 | `message` / `code` / `retryable` |
+
+---
+
+## 🎯 检索质量怎么衡量
+
+知识库这条链路不是"接了个 RAG 就完了"，它有一套可复现的尺子：
+
+| 指标 | 当前值 | 说明 |
+|---|---|---|
+| Recall@3 | 93.3%（28/30） | Top3 里出现正确疾病的用例占比 |
+| MRR | 0.900 | 第一个正确疾病排名的倒数均值 |
+| 科室一致率 | 90.0%（27/30） | 榜首疾病的建议科室与期望一致 |
+| 红旗召回 | 7/7 | 危险信号必须**全部**命中，漏一个算失败 |
+| 负例误报 | 0/5 | 知识库没有的病，不许硬凑 |
+
+评测集在 `backend/src/test/resources/eval/retrieval-cases.json`（35 条，含 5 条负例），
+跑 `mvn test -Dtest=RetrievalEvalTest` 后看 `backend/target/retrieval-eval.txt`。
+
+**为什么要有这个文件**：没有它，任何"我优化了检索"的说法都无法验证。第 20 章那个
+"打对折的否定机制其实是空实现"就是靠控制实验抓出来的 —— 指标涨了 0.7 个百分点，
+把系数改回 1.0 一跑，一模一样。
 
 ---
 

@@ -160,6 +160,67 @@ class SymptomNormalizerTest {
     }
 
     @Test
+    @DisplayName("否认的症状单独收进 denied，而不是直接丢掉")
+    void negatedSymptomIsKeptAsDenied() {
+        Integer fever = symptom("发热", "全身", "全身", 1);
+        Integer cough = symptom("咳嗽", "呼吸", "呼吸", 1);
+        alias(fever, "发烧", "0.95");
+        alias(cough, "咳嗽", "0.90");
+        normalizer.invalidate();
+
+        var result = normalizer.normalizeWithNegatives("咳嗽三天了，没有发烧");
+
+        // 承认的进 hits，否认的进 denied —— 两件事必须分开
+        assertThat(result.hits()).extracting(NormalizedSymptom::getSymptomName)
+                .containsExactly("咳嗽");
+        assertThat(result.denied()).extracting(NormalizedSymptom::getSymptomName)
+                .containsExactly("发热");
+        // 否认也要带上原话，上下文里要写「他说的原话是『发烧』」
+        assertThat(result.denied().get(0).getMatchedText()).isEqualTo("发烧");
+    }
+
+    @Test
+    @DisplayName("只否认没承认时 hits 为空、denied 有值")
+    void pureDenialStillCarriesInformation() {
+        Integer fever = symptom("发热", "全身", "全身", 1);
+        alias(fever, "发烧", "0.95");
+        normalizer.invalidate();
+
+        var result = normalizer.normalizeWithNegatives("没有发烧");
+
+        // 这条钉住的是：normalize() 返回空、但 normalizeWithNegatives() 不是空 ——
+        // 老代码在这里把信息整条扔掉了，下游无从知道患者主动排除了发热
+        assertThat(result.hits()).isEmpty();
+        assertThat(result.denied()).hasSize(1);
+        assertThat(normalizer.normalize("没有发烧")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("同一症状既否认又承认时，以承认为准")
+    void denialLosesToLaterConfirmation() {
+        Integer fever = symptom("发热", "全身", "全身", 1);
+        alias(fever, "发烧", "0.95");
+        normalizer.invalidate();
+
+        var result = normalizer.normalizeWithNegatives("昨天没有发烧，今天发烧了");
+
+        // 患者最后说的是他现在有，按承认算；否则会出现「患者刚说烧起来了，
+        // 系统还记着他昨天没烧」这种明显不对劲的结果
+        assertThat(result.hits()).extracting(NormalizedSymptom::getSymptomName)
+                .containsExactly("发热");
+        assertThat(result.denied()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("空输入时 denied 也是空，不抛异常")
+    void blankInputHasEmptyDenied() {
+        var result = normalizer.normalizeWithNegatives(null);
+
+        assertThat(result.hits()).isEmpty();
+        assertThat(result.denied()).isEmpty();
+    }
+
+    @Test
     @DisplayName("空输入返回空列表，不抛异常")
     void blankInputReturnsEmpty() {
         assertThat(normalizer.normalize(null)).isEmpty();

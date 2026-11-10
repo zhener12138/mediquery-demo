@@ -79,9 +79,39 @@ public final class DiseaseScorer {
     public static List<SymptomHit> score(List<DiseaseSymptomEdge> edges,
                                          Map<Integer, Double> idf,
                                          int limit) {
+        return score(edges, idf, java.util.Set.<Integer>of(), limit);
+    }
+
+    /**
+     * 带否认症状的打分。
+     *
+     * <p>否认不是「没提到」。患者说「没有发烧」，意思是<b>这个病不能拿发烧当理由</b> ——
+     * 一份写着「发热为主」的感冒，和一份写着「咽痛为主」的扁桃体炎，
+     * 在「咽痛 + 否认发热」这句话面前份量必须不一样。
+     *
+     * <p>做法是<b>不给这条边计分</b>，而不是打个折。这一点试过：
+     * 第一版按 {@code 0.5} 折算，结果病毒性感冒在「咳嗽但没有发烧」里
+     * 反而比不打折时<b>更高分</b>（0.6 × 0.5 = 0.3 仍是白送的），
+     * 等于系统把患者主动排除的方向又捡回来一次。控制实验（把系数改成 1.0
+     * 再跑同一批评测）结果一模一样，说明那一版对排序毫无影响 —— 看着实现了，
+     * 实际是空的。
+     *
+     * <p>不计分的连带结果是：如果某个病<b>只</b>靠被否认的症状进候选，
+     * 它这轮得 0 分，会掉到列表最后。不把它删掉 —— 保留在列表里成本很低，
+     * 而误删一个可能正确的病，用户看到的是「系统没提」，比排最后难发现得多。
+     *
+     * @param deniedSymptomIds 患者明确否认的症状 ID
+     */
+    public static List<SymptomHit> score(List<DiseaseSymptomEdge> edges,
+                                         Map<Integer, Double> idf,
+                                         java.util.Collection<Integer> deniedSymptomIds,
+                                         int limit) {
         if (edges == null || edges.isEmpty()) {
             return List.of();
         }
+        var denied = deniedSymptomIds == null ? java.util.Set.<Integer>of()
+                : new java.util.HashSet<>(deniedSymptomIds);
+
         Map<Integer, double[]> totals = new LinkedHashMap<>();
         Map<Integer, SymptomHit> bodies = new LinkedHashMap<>();
 
@@ -105,9 +135,15 @@ public final class DiseaseScorer {
 
             double weight = edge.getWeight() == null ? 1.0 : edge.getWeight().doubleValue();
             double factor = idf.getOrDefault(edge.getSymptomId(), 1.0);
+            // 被否认的症状不计分：见方法注释，打对折等于白送半分
+            if (edge.getSymptomId() != null && denied.contains(edge.getSymptomId())) {
+                weight = 0.0;
+            }
             double[] acc = totals.computeIfAbsent(edge.getIllnessId(), id -> new double[2]);
             acc[0] += weight * factor;
-            if (Boolean.TRUE.equals(edge.getIsCardinal())) {
+            // 被否认的症状既不加分也不计入「命中了几个核心症状」，
+            // 否则同分的两个病里，靠被否认症状撑出核心命中的那个反而排前面
+            if (Boolean.TRUE.equals(edge.getIsCardinal()) && weight > 0.0) {
                 acc[1] += 1;
             }
             if (Boolean.TRUE.equals(edge.getIsRedFlag())) {

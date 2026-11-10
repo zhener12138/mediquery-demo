@@ -68,6 +68,21 @@ public class SymptomNormalizer {
     }
 
     /**
+     * 归一化结果：认出的症状，以及用户<b>明确否认</b>的症状。
+     *
+     * <p>否认不是「没提」。患者说「没有发烧」和压根不提发烧是两件事：
+     * 前者是在主动排除一个方向，后者只是信息缺口。把两者都当没提，
+     * 等于让患者把阴性症状说了一遍却得不到任何好处 —— 而这恰恰惩罚了
+     * 表达最仔细的那部分人。
+     */
+    public record Normalized(List<NormalizedSymptom> hits, List<NormalizedSymptom> denied) {
+
+        public static Normalized empty() {
+            return new Normalized(List.of(), List.of());
+        }
+    }
+
+    /**
      * 把一句话归一成症状列表。
      *
      * <p>同一个症状被多个说法命中时只保留一条，取权重最高的那次 ——
@@ -77,19 +92,35 @@ public class SymptomNormalizer {
      * @return 按首次出现顺序排列的症状；输入无有效信息时返回空列表
      */
     public List<NormalizedSymptom> normalize(String text) {
+        return normalizeWithNegatives(text).hits();
+    }
+
+    /**
+     * 归一化，同时把被否定的症状也带出来。
+     *
+     * <p>词表里每个说法照样会被扫一遍：「没有发烧」里的「发烧」命中位置，
+     * 只是被 {@link NegationMatcher} 判成否认，于是落进 {@code denied} 而不是 {@code hits}。
+     * 下游拿 denied 去扣分、去避免重复追问 —— 具体怎么用不在这里决定，
+     * 这一层只负责说实话：用户提了这个词，而且他说的是没有。
+     *
+     * <p>同一个症状在句子里出现两次、一次否认一次承认（「昨天没有发烧，今天烧起来了」），
+     * 以<b>承认</b>为准：患者最后说的是他现在有。
+     */
+    public Normalized normalizeWithNegatives(String text) {
         if (text == null || text.isBlank()) {
-            return List.of();
+            return Normalized.empty();
         }
 
         var vocabulary = vocabulary();
         if (vocabulary.isEmpty()) {
-            return List.of();
+            return Normalized.empty();
         }
 
         // 已认定的字符区间。最长优先 + 区间占位，保证「喉咙痛」不会被再拆出「喉咙」
         boolean[] taken = new boolean[text.length()];
         // key = symptomId，value = 该症状最可信的一次命中
         Map<Integer, NormalizedSymptom> hits = new LinkedHashMap<>();
+        Map<Integer, NormalizedSymptom> denied = new LinkedHashMap<>();
 
         for (var row : vocabulary) {
             var token = row.getMatchText();
@@ -103,21 +134,26 @@ public class SymptomNormalizer {
                     break;
                 }
                 int end = idx + token.length();
-                if (!overlaps(taken, idx, end) && !NegationMatcher.isNegated(text, idx)) {
+                if (!overlaps(taken, idx, end)) {
                     mark(taken, idx, end);
                     var found = toNormalized(row, token);
-                    hits.merge(row.getSymptomId(), found,
+                    var bucket = NegationMatcher.isNegated(text, idx) ? denied : hits;
+                    bucket.merge(row.getSymptomId(), found,
                             (oldOne, newOne) -> weightOf(newOne).compareTo(weightOf(oldOne)) > 0 ? newOne : oldOne);
                 }
                 from = end;
             }
         }
 
-        if (!hits.isEmpty()) {
-            log.debug("症状归一：{} → {}", text, hits.values().stream()
-                    .map(n -> n.getMatchedText() + "=" + n.getSymptomName()).toList());
+        // 承认优先：同一个症状既被否认又被承认时，按承认算
+        denied.keySet().removeIf(hits::containsKey);
+
+        if (!hits.isEmpty() || !denied.isEmpty()) {
+            log.debug("症状归一：{} → 命中 {}，否认 {}", text,
+                    hits.values().stream().map(n -> n.getMatchedText() + "=" + n.getSymptomName()).toList(),
+                    denied.values().stream().map(n -> n.getMatchedText() + "=" + n.getSymptomName()).toList());
         }
-        return new ArrayList<>(hits.values());
+        return new Normalized(new ArrayList<>(hits.values()), new ArrayList<>(denied.values()));
     }
 
     /**

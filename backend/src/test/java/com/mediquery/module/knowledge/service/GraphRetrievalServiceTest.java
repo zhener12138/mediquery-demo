@@ -130,8 +130,22 @@ class GraphRetrievalServiceTest {
         diseaseSymptomMapper.insert(e);
     }
 
-    private void department(Integer illnessId, String name, int priority, String reason) {
-        var d = new DiseaseDepartment();
+    /**
+     * 给症状挂一个口语别名。
+     *
+     * <p>测试里症状的主名是医学说法（「发热」），患者嘴里说的是「发烧」——
+     * 缺了这一层，输入「没有发烧」归一化不出任何东西，
+     * 后面验否认的用例全都在空集上断言。
+     */
+    private void alias(Integer symptomId, String text, String weight) {
+        var a = new SymptomAlias();
+        a.setSymptomId(symptomId);
+        a.setAlias(text);
+        a.setWeight(new BigDecimal(weight));
+        aliasMapper.insert(a);
+    }
+
+    private void department(Integer illnessId, String name, int priority, String reason) {        var d = new DiseaseDepartment();
         d.setIllnessId(illnessId);
         d.setDepartment(name);
         d.setPriority(priority);
@@ -288,6 +302,79 @@ class GraphRetrievalServiceTest {
 
         assertThat(result.isEmpty()).isTrue();
         assertThat(result.entries()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("患者否认的症状会被带出去，供上下文与追问层使用")
+    void deniedSymptomIsCarriedThrough() {
+        Integer fever = symptom("发热");
+        Integer cough = symptom("咳嗽");
+        // 患者不会说「发热」，说的是「发烧」—— 少了这条别名，
+        // 「没有发烧」归一化不出任何症状，这条用例就成了空断言
+        alias(fever, "发烧", "0.95");
+
+        Integer cold = illness("感冒", "");
+        edge(cold, fever, "0.90", true, false);
+        edge(cold, cough, "0.50", false, false);
+
+        normalizer.invalidate();
+
+        var result = graphRetrievalService.retrieve("咳嗽三天，没有发烧");
+
+        // 承认的进 symptoms，否认的进 denied —— 两者都要能拿到
+        assertThat(result.symptoms()).extracting("symptomName").containsExactly("咳嗽");
+        assertThat(result.denied()).extracting("symptomName").containsExactly("发热");
+    }
+
+    @Test
+    @DisplayName("只否认没承认时也给结果对象：患者说了不烧，模型不该反问他烧不烧")
+    void denialOnlyStillReturnsResult() {
+        Integer fever = symptom("发热");
+        Integer cough = symptom("咳嗽");
+        alias(fever, "发烧", "0.95");
+
+        Integer cold = illness("感冒", "");
+        edge(cold, fever, "0.90", true, false);
+        edge(cold, cough, "0.50", false, false);
+
+        normalizer.invalidate();
+
+        var result = graphRetrievalService.retrieve("没有发烧");
+
+        // 没有任何承认的症状 → 检索不出候选（isEmpty 为真），
+        // 但 denied 必须带出来，否则下游无从知道用户已经排除了发热
+        assertThat(result.isEmpty()).isTrue();
+        assertThat(result.denied()).extracting("symptomName").containsExactly("发热");
+    }
+
+    @Test
+    @DisplayName("否认会改变排序：靠被否认症状撑起来的病会被拉下来")
+    void denialChangesRanking() {
+        Integer fever = symptom("发热");
+        Integer soreThroat = symptom("咽痛");
+        alias(fever, "发烧", "0.95");
+
+        // 甲：只有发热，0.95
+        Integer feverish = illness("发热为主的病", "");
+        edge(feverish, fever, "0.95", true, false);
+
+        // 乙：只有咽痛，0.80 —— 不打折时排第二
+        Integer throat = illness("咽痛为主的病", "");
+        edge(throat, soreThroat, "0.80", true, false);
+
+        normalizer.invalidate();
+
+        var withoutDenial = graphRetrievalService.retrieve("发热咽痛");
+        assertThat(withoutDenial.entries()).extracting(e -> e.disease().getIllnessName())
+                .containsExactly("发热为主的病", "咽痛为主的病");
+
+        // 输入里不能同时出现「发热」和「没发烧」：那是同一个症状，
+        // 归一化会按「承认优先于否认」把它判成承认，否认直接被清掉。
+        // 模拟的是患者只说了咽痛、顺带排除发热。
+        var withDenial = graphRetrievalService.retrieve("咽痛，但没有发烧");
+        // 甲没法靠「发热」进候选了；乙不受影响，直接排第一
+        assertThat(withDenial.entries()).extracting(e -> e.disease().getIllnessName())
+                .containsExactly("咽痛为主的病", "发热为主的病");
     }
 
     @Test
