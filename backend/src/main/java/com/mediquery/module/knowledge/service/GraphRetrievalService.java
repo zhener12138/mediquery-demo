@@ -30,22 +30,26 @@ import java.util.Map;
  *       口语怎么变，只要录了别名就能命中。</li>
  * </ul>
  *
- * <p>三跳各自的产出：
- * <ol>
- *   <li>症状 → 疾病：带 {@code SUM(weight)} 粗排分和命中核心症状数；
- *       红旗用 {@code MAX(is_red_flag)} 单独带出，<b>不混进分数</b>；</li>
- *   <li>疾病 → 科室：带 {@code priority}，第一个就是该先去的科；</li>
- *   <li>疾病 → 用药：带 {@code indication / line_of_treatment / evidence_level}，
- *       让「阿莫西林」这种必须带条件的药没法裸奔出现。</li>
- * </ol>
+ * <h3>打分：为什么不是 {@code SUM(weight)}</h3>
+ * <p>「发热」挂在知识库里大半的疾病上，「骨擦音」只挂在骨折上。
+ * 两者命中时给出的信息量差着一个数量级，而 {@code SUM(weight)}
+ * 把它们当成一样值钱。代价在只有 10 个病时看不出来 ——
+ * 每个症状最多命中三五个病，怎么排都还像话；病一多，
+ * 最普遍的那个症状就会把它命中的所有病一起顶到前排。
+ *
+ * <p>所以真正的排序交给 {@link DiseaseScorer}：按每个症状自己的
+ * 文档频率算 idf，再乘该条边的 weight 求和。SQL 只负责
+ * 「哪些病沾边」和把边原样带回来。
+ *
+ * <p>红旗用 {@code MAX(is_red_flag)} 单独带出，<b>不混进分数</b> ——
+ * 红旗是「要不要立刻就医」的判断，不是「更像哪种病」的判断，
+ * 混进分数里会让危急情况被高分但无关的病压下去。
  */
 @Service
 public class GraphRetrievalService {
 
     private static final Logger log = LoggerFactory.getLogger(GraphRetrievalService.class);
 
-    /** 数据库侧候选上限。比最终 Top3 大得多，好让内存重排有得挑。 */
-    private static final int CANDIDATE_LIMIT = 20;
     /** 最终注入上下文的疾病数 */
     public static final int TOP_K = 3;
 
@@ -112,33 +116,55 @@ public class GraphRetrievalService {
             return Result.empty();
         }
 
-        List<SymptomHit> candidates;
+        var ids = symptoms.stream().map(NormalizedSymptom::getSymptomId).toList();
+
+        List<SymptomHit> ranked;
         try {
-            var ids = symptoms.stream().map(NormalizedSymptom::getSymptomId).toList();
-            candidates = diseaseSymptomMapper.selectIllnessesBySymptoms(ids, CANDIDATE_LIMIT);
+            var edges = diseaseSymptomMapper.selectEdgesBySymptoms(ids);
+            if (edges == null || edges.isEmpty()) {
+                return Result.empty();
+            }
+            ranked = DiseaseScorer.score(edges, idfOf(ids), TOP_K);
         } catch (Exception e) {
-            log.warn("疾病召回失败，本轮跳过图谱检索", e);
+            log.warn("疾病召回或打分失败，本轮跳过图谱检索", e);
             return Result.empty();
         }
-        if (candidates == null || candidates.isEmpty()) {
+        if (ranked.isEmpty()) {
             return Result.empty();
         }
 
-        var top = candidates.stream().limit(TOP_K).toList();
-        var illnessIds = top.stream().map(SymptomHit::getIllnessId).toList();
+        var illnessIds = ranked.stream().map(SymptomHit::getIllnessId).toList();
 
         // 科室与用药一次批量取回，避免每个病各查两次
         Map<Integer, List<DiseaseDepartment>> departments = groupDepartments(illnessIds);
         Map<Integer, List<DiseaseMedicine>> medicines = groupMedicines(illnessIds);
 
-        var entries = new ArrayList<Entry>(top.size());
-        for (var hit : top) {
+        var entries = new ArrayList<Entry>(ranked.size());
+        for (var hit : ranked) {
             entries.add(new Entry(hit,
                     departments.getOrDefault(hit.getIllnessId(), List.of()),
                     medicines.getOrDefault(hit.getIllnessId(), List.of())));
         }
         log.debug("图谱检索命中：症状={}，疾病={}", symptoms.size(), entries.size());
         return new Result(symptoms, entries);
+    }
+
+    /**
+     * 算本轮命中症状各自的区分度。
+     *
+     * <p>IDF 查失败就全体按 1.0 走 —— 那等于退回原来的
+     * {@code SUM(weight)}。这比整轮检索失败好：排序不够聪明，
+     * 但至少答案还在。
+     */
+    private Map<Integer, Double> idfOf(List<Integer> symptomIds) {
+        try {
+            int total = diseaseSymptomMapper.countPublishedDiseases();
+            var dfs = diseaseSymptomMapper.selectSymptomDf(symptomIds);
+            return DiseaseScorer.idf(total, dfs);
+        } catch (Exception e) {
+            log.warn("统计症状文档频率失败，本轮退回等权打分", e);
+            return Map.of();
+        }
     }
 
     private Map<Integer, List<DiseaseDepartment>> groupDepartments(List<Integer> illnessIds) {

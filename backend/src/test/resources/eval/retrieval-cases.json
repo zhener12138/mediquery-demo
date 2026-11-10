@@ -1,0 +1,230 @@
+[
+  {
+    "id": "c01",
+    "complaint": "鼻子不通气，流清鼻涕，老打喷嚏",
+    "expectDiseases": ["病毒性感冒", "风寒感冒"],
+    "expectDepartment": "内科",
+    "note": "两条感冒都算对——鼻塞流涕打喷嚏这个组合本身区分不开"
+  },
+  {
+    "id": "c02",
+    "complaint": "嗓子疼，咽口水都疼，还有点发烧",
+    "expectDiseases": ["扁桃体炎"],
+    "expectDepartment": "耳鼻喉科",
+    "note": "「咽口水都疼」是扁桃体炎的强信号，不该被感冒分走"
+  },
+  {
+    "id": "c03",
+    "complaint": "右边太阳穴一跳一跳地疼，怕光怕吵",
+    "expectDiseases": ["偏头痛"],
+    "expectDepartment": "内科",
+    "note": "「一跳一跳」+「怕光怕吵」是偏头痛的教科书描述"
+  },
+  {
+    "id": "c04",
+    "complaint": "好几天没上厕所了，大便干得像羊粪蛋",
+    "expectDiseases": ["便秘"],
+    "expectDepartment": "内科",
+    "note": "羊粪蛋是口语里最典型的便秘描述"
+  },
+  {
+    "id": "c05",
+    "complaint": "摔了一跤，小腿肿起来动不了，骨头响",
+    "expectDiseases": ["骨折"],
+    "expectDepartment": "外科",
+    "expectRedFlag": true,
+    "note": "骨擦感是红旗症状，必须同时报红旗"
+  },
+  {
+    "id": "c06",
+    "complaint": "刷牙老是牙龈出血，牙也松了",
+    "expectDiseases": ["牙周炎"],
+    "expectDepartment": "口腔科",
+    "note": "刷牙出血是用户的原话，不是教科书术语"
+  },
+  {
+    "id": "c07",
+    "complaint": "吃完饭胃疼，还反酸烧心",
+    "expectDiseases": ["胃溃疡"],
+    "expectDepartment": "内科",
+    "note": "饭后痛 + 反酸，胃溃疡的典型组合"
+  },
+  {
+    "id": "c08",
+    "complaint": "嘴里长了个溃疡，疼得吃不下饭",
+    "expectDiseases": ["口腔溃疡"],
+    "expectDepartment": "口腔科",
+    "note": "用户会说「嘴里长溃疡」，「口腔黏膜溃疡」只有医生这么写"
+  },
+  {
+    "id": "c09",
+    "complaint": "胳膊上起红疹，痒得难受",
+    "expectDiseases": ["湿疹"],
+    "expectDepartment": "皮肤科",
+    "note": "「起红疹」「痒得难受」都是别名"
+  },
+  {
+    "id": "c10",
+    "complaint": "怕冷，浑身酸痛，不出汗，咳白痰",
+    "expectDiseases": ["风寒感冒"],
+    "expectDepartment": "内科",
+    "note": "怕冷 + 不出汗 + 白痰，风寒感冒的三个特征同时出现"
+  },
+  {
+    "id": "c11",
+    "complaint": "干咳，喉咙痛，有点低烧",
+    "expectDiseases": ["病毒性感冒", "风寒感冒", "扁桃体炎"],
+    "expectDepartment": "内科",
+    "note": "三条都可能，这里验的是「至少召回一条相关的」，不是唯一答案"
+  },
+  {
+    "id": "c12",
+    "complaint": "拉不出来，蹲半天，肚子胀",
+    "expectDiseases": ["便秘"],
+    "expectDepartment": "内科",
+    "note": "改造前这句话召回 0 条，是这次改造的核心验收点"
+  },
+  {
+    "id": "c13",
+    "complaint": "头疼得厉害，还恶心想吐",
+    "expectDiseases": ["偏头痛"],
+    "expectDepartment": "内科",
+    "note": "「头疼」+ 恶心呕吐；注意感冒也带头痛，这条是压力测试"
+  },
+  {
+    "id": "c14",
+    "complaint": "牙龈肿痛，刷牙出血，口气重",
+    "expectDiseases": ["牙周炎"],
+    "expectDepartment": "口腔科",
+    "note": "三个口腔症状叠在一起"
+  },
+  {
+    "id": "c15",
+    "complaint": "肚子上面疼，总打嗝，没胃口",
+    "expectDiseases": ["胃溃疡"],
+    "expectDepartment": "内科",
+    "note": "「肚子上面疼」是「上腹部疼痛」的口语别名"
+  },
+  {
+    "id": "c16",
+    "complaint": "皮肤起水泡，渗水，还结痂了",
+    "expectDiseases": ["湿疹"],
+    "expectDepartment": "皮肤科",
+    "note": "湿疹的急性期表现，靠四个症状边叠加"
+  },
+  {
+    "id": "c17",
+    "complaint": "咽东西费劲，扁桃体肿了",
+    "expectDiseases": ["扁桃体炎"],
+    "expectDepartment": "耳鼻喉科",
+    "note": "用户自己说出了「扁桃体」这个部位词"
+  },
+  {
+    "id": "c18",
+    "complaint": "脚踝扭了，肿得老高，一碰就疼",
+    "expectDiseases": ["骨折"],
+    "expectDepartment": "外科",
+    "expectRedFlag": false,
+    "note": "没提骨擦感/畸形，所以不该报红旗——验的是别过度报警"
+  },
+  {
+    "id": "c19",
+    "complaint": "嘴里溃疡上有白膜，周围一圈红的",
+    "expectDiseases": ["口腔溃疡"],
+    "expectDepartment": "口腔科",
+    "note": "「白膜」「周围红」都是别名"
+  },
+  {
+    "id": "c20",
+    "complaint": "最近总睡不着",
+    "expectDiseases": [],
+    "expectDepartment": null,
+    "note": "已知缺口：知识库里没有失眠。这条验的是「没有就说没有」，不是硬凑一个"
+  },
+  {
+    "id": "c21",
+    "complaint": "头晕，眼前发黑",
+    "expectDiseases": [],
+    "expectDepartment": null,
+    "note": "已知缺口：没有贫血/低血压/眩晕这类病"
+  },
+  {
+    "id": "c22",
+    "complaint": "心慌，心跳得厉害",
+    "expectDiseases": [],
+    "expectDepartment": null,
+    "note": "已知缺口：没有心律失常/甲亢"
+  },
+  {
+    "id": "c23",
+    "complaint": "腰疼，弯不下腰",
+    "expectDiseases": [],
+    "expectDepartment": null,
+    "note": "已知缺口：没有腰肌劳损/腰椎间盘突出"
+  },
+  {
+    "id": "c24",
+    "complaint": "拉肚子，一天跑好几趟厕所",
+    "expectDiseases": [],
+    "expectDepartment": null,
+    "note": "已知缺口：没有急性胃肠炎。注意「拉不出来」有别名而「拉肚子」没有，这是别名覆盖不全"
+  },
+  {
+    "id": "c25",
+    "complaint": "发烧三天了，咳嗽有黄痰",
+    "expectDiseases": ["病毒性感冒", "扁桃体炎"],
+    "expectDepartment": "内科",
+    "note": "黄痰不在别名里（只有白痰），验的是发热+咳嗽还能不能兜住"
+  },
+  {
+    "id": "c26",
+    "complaint": "半边头疼，疼起来想吐",
+    "expectDiseases": ["偏头痛"],
+    "expectDepartment": "内科",
+    "note": "「半边头疼」是「单侧头痛」的别名"
+  },
+  {
+    "id": "c27",
+    "complaint": "牙缝变大，吃东西老塞牙",
+    "expectDiseases": ["牙周炎"],
+    "expectDepartment": "口腔科",
+    "note": "只有一条弱边命中（牙周袋 0.70），验的是单症状能不能撑住"
+  },
+  {
+    "id": "c28",
+    "complaint": "胃里反酸水，夜里疼醒",
+    "expectDiseases": ["胃溃疡"],
+    "expectDepartment": "内科",
+    "note": "「夜里疼醒」不在别名里，靠反酸起头"
+  },
+  {
+    "id": "c29",
+    "complaint": "嗓子里有脓点，发高烧",
+    "expectDiseases": ["扁桃体炎"],
+    "expectDepartment": "耳鼻喉科",
+    "note": "扁桃体脓点 + 发高烧，两条强边"
+  },
+  {
+    "id": "c30",
+    "complaint": "皮肤很痒，起红疹脱皮",
+    "expectDiseases": ["湿疹"],
+    "expectDepartment": "皮肤科",
+    "note": "痒 + 红疹 + 脱皮，三个症状同一疾病"
+  },
+  {
+    "id": "c31",
+    "complaint": "吐了一口血，大便发黑",
+    "expectDiseases": ["胃溃疡"],
+    "expectDepartment": "内科",
+    "expectRedFlag": true,
+    "note": "呕血 + 黑便两个红旗同时出现，必须报警"
+  },
+  {
+    "id": "c32",
+    "complaint": "咳个不停，喘不上气",
+    "expectDiseases": ["病毒性感冒"],
+    "expectDepartment": "内科",
+    "expectRedFlag": true,
+    "note": "呼吸困难是红旗；这条验的是红旗不会被「感冒只是小病」的直觉压下去"
+  }
+]
