@@ -227,4 +227,67 @@ class SymptomNormalizerTest {
         assertThat(normalizer.normalize("")).isEmpty();
         assertThat(normalizer.normalize("   ")).isEmpty();
     }
+
+    @Test
+    @DisplayName("松散匹配：虚词夹在别名中间也能命中")
+    void looseMatchToleratesFillerWords() {
+        Integer ulcer = symptom("口腔溃疡", "口腔", "口腔", 1);
+        alias(ulcer, "嘴里溃疡", "0.95");
+        normalizer.invalidate();
+
+        // 别名是「嘴里溃疡」，患者说的是「嘴里长了个溃疡」——
+        // 中间夹了「长了个」三个字。别名表不可能穷举所有夹法，
+        // 所以这一层必须自己能容忍虚词
+        var hits = normalizer.normalize("嘴里长了个溃疡，疼得吃不下饭");
+
+        assertThat(hits).extracting(NormalizedSymptom::getSymptomName)
+                .contains("口腔溃疡");
+        // matchedText 要回显患者原话，而不是别名本身
+        assertThat(hits.get(0).getMatchedText()).isEqualTo("嘴里长了个溃疡");
+    }
+
+    @Test
+    @DisplayName("松散匹配：夹的必须是虚词，「嗓子不像疼」这种不能松")
+    void looseMatchRejectsRealWordsInGap() {
+        Integer soreThroat = symptom("咽痛", "咽喉", "呼吸", 1);
+        alias(soreThroat, "嗓子疼", "0.95");
+        normalizer.invalidate();
+
+        // 「不像」不是虚词，也不是白名单里的字 —— 松开了就等于把
+        // 患者否定的话记成肯定，比漏召严重得多
+        assertThat(normalizer.normalize("嗓子不像疼")).isEmpty();
+        // 而同一个别名在正常说法里必须仍然能命中
+        assertThat(normalizer.normalize("嗓子有点疼"))
+                .extracting(NormalizedSymptom::getSymptomName)
+                .contains("咽痛");
+    }
+
+    @Test
+    @DisplayName("松散匹配：夹字超过上限就不松")
+    void looseMatchStopsAtGapLimit() {
+        Integer ulcer = symptom("口腔溃疡", "口腔", "口腔", 1);
+        alias(ulcer, "嘴里溃疡", "0.95");
+        normalizer.invalidate();
+
+        // 夹了五个字，超过 MAX_GAP=3。上限存在的理由：
+        // 放太宽会开始把「嘴里没事，但是牙疼得厉害」这种句子拼成口腔溃疡
+        assertThat(normalizer.normalize("嘴里什么都没有就是溃疡")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("精确匹配优先：能整词命中时不做松散")
+    void exactMatchTakesPrecedence() {
+        Integer ulcer = symptom("口腔溃疡", "口腔", "口腔", 1);
+        alias(ulcer, "嘴里溃疡", "0.95");
+        alias(ulcer, "溃疡", "0.60");
+        normalizer.invalidate();
+
+        var hits = normalizer.normalize("嘴里溃疡");
+
+        // 整词命中时 matchedText 必须是原词，不能因为松散分支
+        // 命中更长的切片就把 0.95 的精确匹配挤掉
+        assertThat(hits).extracting(NormalizedSymptom::getSymptomName)
+                .containsExactly("口腔溃疡");
+        assertThat(hits.get(0).getMatchedText()).isEqualTo("嘴里溃疡");
+    }
 }

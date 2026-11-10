@@ -58,6 +58,33 @@ public class SymptomNormalizer {
                     .reversed()
                     .thenComparing((SymptomVocabularyRow r) -> weightOf(r), Comparator.reverseOrder());
 
+    /**
+     * 松散匹配时，两个实词之间最多允许夹几个字。
+     *
+     * <p>实测里最长的干扰是「长了个」「了一口」这种三字插入。
+     * 再往上放（比如 5）会开始把不相干的两句拼起来，
+     * 而收益只是多覆盖几个本来该靠别名表解决的说法。
+     */
+    private static final int MAX_GAP = 3;
+
+    /**
+     * 允许夹在两个实词之间的字 —— 白名单，不是黑名单。
+     *
+     * <p>用白名单是因为黑名单挡不住想象不到的组合：排除掉否定词之后，
+     * 「发热」还会被松成「发现很热」，「吐血」会被松成「吐出来的血块」。
+     * 而这里只放真正的中文虚词、量词与数词，患者说「嗓子里有脓点」
+     * 中间的「里」、「吐了一口血」中间的「了一」，都在名单里；
+     * 换成任何一个实词就立刻不匹配。
+     *
+     * <p>否定词（不没无未否别非）故意不在名单里 —— 这样「嗓子不疼」
+     * 永远不会被松成「嗓子疼」。这比漏召一个症状严重得多：
+     * 系统会把患者主动排除的症状记成他有。
+     */
+    private static final String GAP_ALLOWED =
+            "了着过得的地个只些点儿一两三四几半里外上下中内前后边"
+                    + "是有很太都也还就又再才刚一直点儿种样么之其该把被让给对从向于"
+                    + "长出起";
+
     private final SymptomMapper symptomMapper;
 
     private volatile List<SymptomVocabularyRow> cache = List.of();
@@ -127,21 +154,13 @@ public class SymptomNormalizer {
             if (token == null || token.isEmpty()) {
                 continue;
             }
-            int from = 0;
-            while (true) {
-                int idx = text.indexOf(token, from);
-                if (idx < 0) {
-                    break;
-                }
-                int end = idx + token.length();
-                if (!overlaps(taken, idx, end)) {
-                    mark(taken, idx, end);
-                    var found = toNormalized(row, token);
-                    var bucket = NegationMatcher.isNegated(text, idx) ? denied : hits;
-                    bucket.merge(row.getSymptomId(), found,
-                            (oldOne, newOne) -> weightOf(newOne).compareTo(weightOf(oldOne)) > 0 ? newOne : oldOne);
-                }
-                from = end;
+            boolean matchedExactly = matchExact(text, token, taken, row, hits, denied);
+            // 精确一条都没中的长词，才退到松散匹配。
+            // 必须在同一个循环里做：拆成两遍的话，「吐了一口血」里的「吐」
+            // 已经被更短的「吐了」占住，轮到「吐血」时 overlaps 直接把它挡回去，
+            // 而「吐了」是错的那条。
+            if (!matchedExactly) {
+                matchLoose(text, token, taken, row, hits, denied);
             }
         }
 
@@ -200,6 +219,118 @@ public class SymptomNormalizer {
             }
         }
         return false;
+    }
+
+    /**
+     * 精确匹配：别名逐字出现。
+     *
+     * @return 是否至少命中一处（哪怕该处已被别的词占住）
+     */
+    private static boolean matchExact(String text, String token, boolean[] taken,
+                                      SymptomVocabularyRow row,
+                                      Map<Integer, NormalizedSymptom> hits,
+                                      Map<Integer, NormalizedSymptom> denied) {
+        boolean any = false;
+        int from = 0;
+        while (true) {
+            int idx = text.indexOf(token, from);
+            if (idx < 0) {
+                break;
+            }
+            any = true;
+            int end = idx + token.length();
+            if (!overlaps(taken, idx, end)) {
+                mark(taken, idx, end);
+                collect(row, NegationMatcher.isNegated(text, idx) ? denied : hits,
+                        toNormalized(row, token));
+            }
+            from = end;
+        }
+        return any;
+    }
+
+    /**
+     * 松散匹配：允许两个实词之间夹少量虚词。
+     *
+     * <p>「嘴里长了个溃疡」和别名「嘴里溃疡」差三个字，「嗓子里有脓点」和「嗓子有脓」
+     * 差一个字，「吐了一口血」和「吐血」差两个字 —— 精确匹配要求逐字连续，
+     * 于是这些说法一次都命中不了，而补别名又永远补不完：患者在「长了」「里」
+     * 「了一口」这些位置上怎么写是随机的，别名表不可能穷举。
+     *
+     * <p>做法是把别名拆成「前缀 + 后缀」，前缀照常精确匹配，后缀允许在前缀之后
+     * {@link #MAX_GAP} 个字以内出现，中间夹的字只要不含否定词和标点就放行。
+     * 从前缀最长的拆法开始试，保持「长的优先」这条总原则。
+     */
+    private static void matchLoose(String text, String token, boolean[] taken,
+                                   SymptomVocabularyRow row,
+                                   Map<Integer, NormalizedSymptom> hits,
+                                   Map<Integer, NormalizedSymptom> denied) {
+        if (token.length() < 2) {
+            return;
+        }
+        // 两个字的说得越短，松开的代价越大：「发热」拆成「发…热」能匹配到
+        // 「发现很热」这种无关句子。所以短词只允许夹一个字，
+        // 而「吐了一口血」正好是夹两个字 —— 这条单独放到 gap 2 的下限里靠
+        // 「前缀不能是否定词且夹字不含标点」兜住。
+        int maxGap = token.length() == 2 ? 2 : MAX_GAP;
+        for (int prefixLength = token.length() - 1; prefixLength >= 1; prefixLength--) {
+            String prefix = token.substring(0, prefixLength);
+            String suffix = token.substring(prefixLength);
+            int from = 0;
+            while (true) {
+                int idx = text.indexOf(prefix, from);
+                if (idx < 0) {
+                    break;
+                }
+                int spanEnd = matchSuffixAcrossGap(text, idx, idx + prefixLength, suffix, taken, maxGap);
+                if (spanEnd > 0) {
+                    mark(taken, idx, spanEnd);
+                    String matched = text.substring(idx, spanEnd);
+                    collect(row,
+                            NegationMatcher.isNegated(text, idx) ? denied : hits,
+                            toNormalized(row, matched));
+                    return;
+                }
+                from = idx + 1;
+            }
+        }
+    }
+
+    private static int matchSuffixAcrossGap(String text, int spanStart, int afterPrefix,
+                                            String suffix, boolean[] taken, int maxGap) {
+        for (int gap = 1; gap <= maxGap; gap++) {
+            int suffixStart = afterPrefix + gap;
+            int suffixEnd = suffixStart + suffix.length();
+            if (suffixEnd > text.length()) {
+                return -1;
+            }
+            if (!text.startsWith(suffix, suffixStart)) {
+                continue;
+            }
+            if (overlaps(taken, spanStart, suffixEnd)) {
+                continue;
+            }
+            if (!gapAllowed(text, afterPrefix, suffixStart)) {
+                continue;
+            }
+            return suffixEnd;
+        }
+        return -1;
+    }
+
+    private static boolean gapAllowed(String text, int from, int to) {
+        for (int i = from; i < to; i++) {
+            if (GAP_ALLOWED.indexOf(text.charAt(i)) < 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void collect(SymptomVocabularyRow row,
+                                Map<Integer, NormalizedSymptom> bucket, NormalizedSymptom found) {
+        bucket.merge(row.getSymptomId(), found,
+                (oldOne, newOne) -> weightOf(newOne).compareTo(weightOf(oldOne)) > 0 ? newOne : oldOne);
     }
 
     private static void mark(boolean[] taken, int start, int end) {
