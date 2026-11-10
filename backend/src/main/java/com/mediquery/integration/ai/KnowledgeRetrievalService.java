@@ -10,6 +10,7 @@ import com.mediquery.module.illness.mapper.IllnessMedicineRelMapper;
 import com.mediquery.module.knowledge.dto.NormalizedSymptom;
 import com.mediquery.module.knowledge.entity.DiseaseDepartment;
 import com.mediquery.module.knowledge.dto.DiseaseMedicine;
+import com.mediquery.module.knowledge.service.FollowUpQuestionService;
 import com.mediquery.module.knowledge.service.GraphRetrievalService;
 import com.mediquery.module.medicine.entity.Medicine;
 
@@ -199,7 +200,33 @@ public class KnowledgeRetrievalService {
                       + "不代表一定得了这些病。请优先排除紧急情况。\n\n");
         }
 
+        appendQuestions(sb, result.questions());
+
         return new Retrieved(sb.toString(), List.copyOf(sources), List.copyOf(departmentHints));
+    }
+
+    /**
+     * 追问建议：区分度最高的一两个问题。
+     *
+     * <p>这一段是给模型「参考着问」的，不是让它照抄。所以每条都写清楚
+     * 答「有」和答「没有」分别意味着什么 —— 模型只有知道答案会带来什么，
+     * 才问得像医生，而不是像表单。
+     *
+     * <p>措辞上刻意加了「如果用户已经说过就不用再问」：多轮对话里
+     * 患者常常一口气说完三件事，系统还照着模板问「有没有发热」是很蠢的。
+     */
+    private void appendQuestions(StringBuilder sb, List<FollowUpQuestionService.Question> questions) {
+        if (questions == null || questions.isEmpty()) {
+            return;
+        }
+        sb.append("【可以追问的问题】\n");
+        sb.append("- 这几个问题最能区分上面的候选病。挑一两个问，不要一次全问完；\n");
+        sb.append("- 用户已经描述过的不必再问；紧急情况优先提醒就医，别追问细节。\n");
+        for (var q : questions) {
+            sb.append("- 有没有「").append(q.symptomName()).append("」？")
+              .append(q.hint()).append("\n");
+        }
+        sb.append("\n");
     }
 
     private void appendDepartments(StringBuilder sb, List<DiseaseDepartment> departments) {

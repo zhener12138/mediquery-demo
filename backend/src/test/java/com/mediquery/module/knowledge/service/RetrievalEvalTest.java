@@ -251,6 +251,15 @@ class RetrievalEvalTest {
 
             report.add(String.format("%-5s %-6s %-4s %-6s %s",
                     evalCase.id(), hit, rr, dept, String.join(" / ", names)));
+
+            // 把这一轮算出来的追问也记下来。没有这一列，报表只能说明
+            // 「召回对不对」，看不到「追问是不是问在了点上」。
+            if (!result.questions().isEmpty()) {
+                var asked = result.questions().stream()
+                        .map(FollowUpQuestionService.Question::symptomName)
+                        .collect(Collectors.joining("、"));
+                report.add(String.format("%-5s   ↳ 追问：%s", "", asked));
+            }
         }
 
         double recall = withExpectation == 0 ? 0 : (double) recallHits / withExpectation;

@@ -2,6 +2,7 @@ package com.mediquery.module.knowledge.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.mediquery.module.knowledge.dto.DiseaseSymptomEdge;
+import com.mediquery.module.knowledge.dto.DiseaseSymptomView;
 import com.mediquery.module.knowledge.dto.SymptomDf;
 import com.mediquery.module.knowledge.entity.DiseaseSymptom;
 import org.apache.ibatis.annotations.Mapper;
@@ -26,7 +27,6 @@ public interface DiseaseSymptomMapper extends BaseMapper<DiseaseSymptom> {
      * {@code GraphRetrievalService} 里做。
      *
      * @param symptomIds 命中的症状 ID 集合，调用方保证非空
-     * @param limit      候选疾病上限，留足内存重排的空间
      */
     @Select("""
             <script>
@@ -85,4 +85,39 @@ public interface DiseaseSymptomMapper extends BaseMapper<DiseaseSymptom> {
             </script>
             """)
     List<SymptomDf> selectSymptomDf(@Param("symptomIds") List<Integer> symptomIds);
+
+    /**
+     * 指定疾病的<b>全部</b>症状表现，含症状名。
+     *
+     * <p>这是主动追问的数据来源。要问「有没有吞咽困难」，系统得先知道
+     * 扁桃体炎写了吞咽困难而病毒性感冒没写 —— 只查用户提过的症状，
+     * 就永远只能复述用户自己说过的话。
+     *
+     * <p>查询把候选疾病的边全捞回来（含用户没提的），由
+     * {@code FollowUpQuestionService} 去算「哪个症状能把它们分开」。
+     *
+     * @param illnessIds 候选疾病 ID，调用方保证非空
+     */
+    @Select("""
+            <script>
+            SELECT ds.illness_id  AS illness_id,
+                   i.name         AS illness_name,
+                   ds.symptom_id  AS symptom_id,
+                   s.name         AS symptom_name,
+                   ds.is_cardinal AS is_cardinal,
+                   ds.weight      AS weight
+              FROM disease_symptom ds
+              JOIN illness i ON i.id = ds.illness_id
+              JOIN symptom s ON s.id = ds.symptom_id
+             WHERE i.deleted = 0
+               AND i.status = 1
+               AND s.status = 1
+               AND ds.illness_id IN
+               <foreach collection="illnessIds" item="iid" open="(" separator="," close=")">
+                 #{iid}
+               </foreach>
+             ORDER BY ds.illness_id ASC, ds.is_cardinal DESC, ds.weight DESC
+            </script>
+            """)
+    List<DiseaseSymptomView> selectSymptomsByIllnessIds(@Param("illnessIds") List<Integer> illnessIds);
 }

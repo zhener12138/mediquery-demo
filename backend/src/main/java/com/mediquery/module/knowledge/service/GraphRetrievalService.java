@@ -57,15 +57,18 @@ public class GraphRetrievalService {
     private final DiseaseSymptomMapper diseaseSymptomMapper;
     private final DiseaseDepartmentMapper departmentMapper;
     private final DiseaseMedicineMapper diseaseMedicineMapper;
+    private final FollowUpQuestionService followUpQuestionService;
 
     public GraphRetrievalService(SymptomNormalizer normalizer,
                                  DiseaseSymptomMapper diseaseSymptomMapper,
                                  DiseaseDepartmentMapper departmentMapper,
-                                 DiseaseMedicineMapper diseaseMedicineMapper) {
+                                 DiseaseMedicineMapper diseaseMedicineMapper,
+                                 FollowUpQuestionService followUpQuestionService) {
         this.normalizer = normalizer;
         this.diseaseSymptomMapper = diseaseSymptomMapper;
         this.departmentMapper = departmentMapper;
         this.diseaseMedicineMapper = diseaseMedicineMapper;
+        this.followUpQuestionService = followUpQuestionService;
     }
 
     /** 一个候选疾病，连同它的科室与用药边。 */
@@ -85,11 +88,18 @@ public class GraphRetrievalService {
      * <p>把归一出来的症状一起带出来，不是为了好看：上下文里写一句
      * 「本轮识别到的症状：失眠（你说的是"睡不着"）」，模型的措辞会立刻变得具体，
      * 而用户也能看出系统有没有听懂 —— 听不懂的时候，前端至少能显示它听成了什么。
+     *
+     * <p>{@code questions} 是「再问一句就能定案」的问题，不是知识。
+     * 它和疾病列表是两种东西：疾病是「我猜你可能是这几个」，
+     * 问题是「告诉我这一句，我就能猜到一两个」。混在一起写，模型会把两类
+     * 都当成结论念出来。
      */
-    public record Result(List<NormalizedSymptom> symptoms, List<Entry> entries) {
+    public record Result(List<NormalizedSymptom> symptoms,
+                         List<Entry> entries,
+                         List<FollowUpQuestionService.Question> questions) {
 
         public static Result empty() {
-            return new Result(List.of(), List.of());
+            return new Result(List.of(), List.of(), List.of());
         }
 
         public boolean isEmpty() {
@@ -145,8 +155,34 @@ public class GraphRetrievalService {
                     departments.getOrDefault(hit.getIllnessId(), List.of()),
                     medicines.getOrDefault(hit.getIllnessId(), List.of())));
         }
-        log.debug("图谱检索命中：症状={}，疾病={}", symptoms.size(), entries.size());
-        return new Result(symptoms, entries);
+
+        var questions = pickQuestions(illnessIds, symptoms);
+        log.debug("图谱检索命中：症状={}，疾病={}，追问={}", symptoms.size(), entries.size(), questions.size());
+        return new Result(symptoms, entries, questions);
+    }
+
+    /**
+     * 挑出能分开这几个候选的问题。
+     *
+     * <p>查的是候选疾病的<b>全部</b>症状 —— 包括用户没提的。
+     * 只拿用户提过的去比，能问出来的一定是「你还疼不疼」这种重复确认；
+     * 要看「扁桃体炎写了吞咽困难而感冒没写」，才问得出真正有区分度的那句。
+     *
+     * <p>这一步失败不值得让整轮检索失败：没有追问，只是回复不够聪明。
+     */
+    private List<FollowUpQuestionService.Question> pickQuestions(List<Integer> illnessIds,
+                                                                 List<NormalizedSymptom> symptoms) {
+        if (illnessIds.size() < 2) {
+            // 只有一个候选，没什么可鉴别的
+            return List.of();
+        }
+        try {
+            var views = diseaseSymptomMapper.selectSymptomsByIllnessIds(illnessIds);
+            return followUpQuestionService.pickQuestions(views, symptoms);
+        } catch (Exception e) {
+            log.warn("挑选追问失败 illnessIds={}，跳过", illnessIds, e);
+            return List.of();
+        }
     }
 
     /**
